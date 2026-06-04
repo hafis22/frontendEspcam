@@ -85,7 +85,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [modalItem, setModalItem]     = useState(null);
   const [esp32Online, setEsp32Online] = useState(false);
   const [esp32IP, setEsp32IP]         = useState('');
-  const [lastHasil, setLastHasil]     = useState('');
+  const [lastHasil, setLastHasil]     = useState('');  // eslint-disable-line no-unused-vars
   const [esp32Frame, setEsp32Frame]   = useState(null);
   const frameRef = useRef(null);
 
