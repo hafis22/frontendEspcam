@@ -87,10 +87,10 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
 
-  // Stream URL lewat VPS proxy
-  const streamUrl = `http://${esp32IP}/`;
+  // Stream URL lewat backend proxy (HTTPS aman)
+  const streamUrl = `${VPS}/api/esp32/stream`;
 
-  // ── Cek ESP32 via VPS ─────────────────────────────
+  // ── Cek ESP32 via backend ─────────────────────────
   const cekEsp32 = async () => {
     try {
       const res  = await fetch(`${VPS}/api/esp32/ip`, {
@@ -107,7 +107,7 @@ function DeteksiPenyakit({ isMobile = false }) {
     return false;
   };
 
-  // ── Poll hasil deteksi lewat VPS proxy ────────────
+  // ── Poll hasil deteksi lewat backend ──────────────
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   };
@@ -116,22 +116,13 @@ function DeteksiPenyakit({ isMobile = false }) {
     stopPolling();
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`http://${esp32IP}/hasil`);
+        // Cek status ESP32 masih online
+        const res  = await fetch(`${VPS}/api/esp32/ip`);
         const data = await res.json();
-        if (data.penyakit && data.penyakit !== '' && data.penyakit !== lastHasil) {
-          setLastHasil(data.penyakit);
-          setHasil(data);
-          const now = new Date();
-          setRiwayat(prev => [{
-            foto:       null,
-            penyakit:   data.penyakit,
-            confidence: data.confidence,
-            waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            tanggal:    now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-          }, ...prev.slice(0, 9)]);
-        }
+        if (!data.online) { setEsp32Online(false); return; }
+        setEsp32Online(true);
       } catch {}
-    }, 3000);
+    }, 5000);
   };
 
   useEffect(() => () => stopPolling(), []);
