@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 const pillStyle = {
   healthy: { background: '#dcfce7', color: '#166534' },
@@ -26,7 +26,7 @@ export default function History({ isMobile = false }) {
 
 const API_URL = 'https://backendescam-production.up.railway.app';
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [s, d] = await Promise.all([
@@ -39,9 +39,9 @@ const API_URL = 'https://backendescam-production.up.railway.app';
       console.error('Gagal fetch history:', err);
     }
     setLoading(false);
-  };
+  }, [dari, sampai]);
 
-  useEffect(() => { fetchData(); }, [dari, sampai]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   return (
     <div style={{ marginBottom: 24 }}>
