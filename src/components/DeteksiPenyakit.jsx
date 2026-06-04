@@ -96,10 +96,10 @@ function DeteksiPenyakit({ isMobile = false }) {
         signal: AbortSignal.timeout(5000)
       });
       const data = await res.json();
-      if (data.online && data.ip) {
+      if (data.ip) {
         setEsp32IP(data.ip);
-        setEsp32Online(true);
-        return true;
+        setEsp32Online(data.online);
+        return true; // ada IP = bisa dicoba
       }
     } catch {}
     setEsp32Online(false);
