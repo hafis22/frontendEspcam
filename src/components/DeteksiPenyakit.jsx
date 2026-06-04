@@ -86,9 +86,8 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32Online, setEsp32Online] = useState(false);
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
-
-  // Stream URL lewat backend proxy (HTTPS aman)
-  const streamUrl = `${VPS}/api/esp32/stream`;
+  const [esp32Frame, setEsp32Frame]   = useState(null);
+  const frameRef = useRef(null);
 
   // ── Cek ESP32 via backend ─────────────────────────
   const cekEsp32 = async () => {
@@ -107,16 +106,30 @@ function DeteksiPenyakit({ isMobile = false }) {
     return false;
   };
 
-  // ── Poll hasil deteksi lewat backend ──────────────
+  // ── Poll frame capture tiap 500ms sebagai live view ──
   const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (pollRef.current)  { clearInterval(pollRef.current);  pollRef.current  = null; }
+    if (frameRef.current) { clearInterval(frameRef.current); frameRef.current = null; }
+  };
+
+  const startFramePolling = () => {
+    if (frameRef.current) return;
+    frameRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${VPS}/api/esp32/capture?t=${Date.now()}`);
+        if (!res.ok) { setEsp32Online(false); return; }
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+        setEsp32Online(true);
+      } catch { setEsp32Online(false); }
+    }, 500);
   };
 
   const startPolling = () => {
-    stopPolling();
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     pollRef.current = setInterval(async () => {
       try {
-        // Cek status ESP32 masih online
         const res  = await fetch(`${VPS}/api/esp32/ip`);
         const data = await res.json();
         if (!data.online) { setEsp32Online(false); return; }
@@ -133,6 +146,7 @@ function DeteksiPenyakit({ isMobile = false }) {
     if (ok) {
       setMode('esp32');
       startPolling();
+      startFramePolling();
     } else {
       alert('ESP32-CAM tidak terdeteksi!\nPastikan ESP32 sudah nyala dan terhubung ke WiFi.');
     }
@@ -145,6 +159,7 @@ function DeteksiPenyakit({ isMobile = false }) {
     setHasil(null);
     setLastHasil('');
     setEsp32IP('');
+    setEsp32Frame(null);
   };
 
   // ── Kamera HP ─────────────────────────────────────
@@ -261,13 +276,14 @@ function DeteksiPenyakit({ isMobile = false }) {
                   cursor: 'default',
                   background: '#000',
                 }}>
-                  <img
-                    src={streamUrl}
-                    alt="ESP32 Live"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={() => setEsp32Online(false)}
-                    onLoad={() => setEsp32Online(true)}
-                  />
+                  {esp32Frame
+                    ? <img src={esp32Frame} alt="ESP32 Live"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
+                        Menghubungkan ke kamera...
+                      </div>
+                  }
                   {/* Badge status */}
                   <div style={styles.esp32Badge}>
                     <div style={{
@@ -275,7 +291,7 @@ function DeteksiPenyakit({ isMobile = false }) {
                       background: esp32Online ? '#4ade80' : '#f87171'
                     }} />
                     <span style={{ fontSize: 11, color: '#fff' }}>
-                      {esp32Online ? `ESP32 Online` : 'Connecting...'}
+                      {esp32Online ? 'ESP32 Online' : 'Connecting...'}
                     </span>
                     {esp32IP && (
                       <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>
