@@ -1,26 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts';
 
-const now = new Date();
-const buatHistori = (base, amplitude, noise) =>
-  Array.from({ length: 12 }, (_, i) => ({
-    v: +(base + Math.sin(i * 0.7) * amplitude + Math.random() * noise).toFixed(2),
-    time: new Date(now - (11 - i) * 5 * 60000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    date: new Date(now - (11 - i) * 5 * 60000).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-  }));
-
-const histori = {
-  temperature: buatHistori(26, 1.5, 0.5),
-  humidity:    buatHistori(80, 4, 1),
-  ph:          buatHistori(6.5, 0.3, 0.1),
-  ec:          buatHistori(1.2, 0.2, 0.05),
-  nitrogen:    buatHistori(150, 20, 5),
-  fosfor:      buatHistori(45, 8, 2),
-  kalium:      buatHistori(200, 25, 5),
-};
+const API = 'https://backendescam-production.up.railway.app';
 
 const params = [
   { key: 'temperature', label: 'Temp',     unit: '°C',    color: '#ef4444' },
@@ -60,12 +44,32 @@ function BarRow({ label, value, max, color }) {
 }
 
 function SensorTanaman({ data, isMobile = false }) {
-  const [active, setActive] = useState('temperature');
+  const [active, setActive]   = useState('temperature');
+  const [histori, setHistori] = useState({});
+
+  useEffect(() => {
+    fetch(`${API}/api/history/sensor`)
+      .then(r => r.json())
+      .then(rows => {
+        if (!Array.isArray(rows)) return;
+        const sorted = [...rows].reverse().slice(0, 20);
+        const result = {};
+        params.forEach(p => {
+          result[p.key] = sorted.map(r => ({
+            v:    r.tanaman?.[p.key] ?? 0,
+            time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+          }));
+        });
+        setHistori(result);
+      })
+      .catch(() => {});
+  }, []);
+
   const activeParam = params.find(p => p.key === active);
-  const activeData  = histori[active];
+  const activeData  = histori[active] || [];
   const latest      = activeData[activeData.length - 1];
 
-  // Hanya 4 parameter di pill (NPK sudah ada di bar bawah)
   const metrics = [
     { key: 'temperature', label: 'Temp',     value: data.temperature, unit: '°C' },
     { key: 'humidity',    label: 'Humidity', value: data.humidity,    unit: '%' },
@@ -102,10 +106,10 @@ function SensorTanaman({ data, isMobile = false }) {
 
           {/* Header grafik */}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 22, fontWeight: 500, color: activeParam.color }}>{latest.v}</span>
+            <span style={{ fontSize: 22, fontWeight: 500, color: activeParam.color }}>{latest?.v ?? '--'}</span>
             <span style={{ fontSize: 13, color: '#475569' }}>{activeParam.unit}</span>
             <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 4 }}>
-              {activeParam.label} — {latest.time}, {latest.date}
+              {activeParam.label}{latest ? ` — ${latest.time}, ${latest.date}` : ''}
             </span>
           </div>
 
@@ -113,28 +117,11 @@ function SensorTanaman({ data, isMobile = false }) {
           <ResponsiveContainer width="100%" height={isMobile ? 140 : 180}>
             <LineChart data={activeData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis
-                dataKey="time"
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                tickLine={false}
-                axisLine={false}
-                interval={2}
-              />
-              <YAxis
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                tickLine={false}
-                axisLine={false}
-              />
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} interval={2} />
+              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="natural"
-                dataKey="v"
-                stroke={activeParam.color}
-                strokeWidth={2.5}
-                dot={{ r: 3, fill: activeParam.color, strokeWidth: 0 }}
-                activeDot={{ r: 5 }}
-                unit={activeParam.unit}
-              />
+              <Line type="natural" dataKey="v" stroke={activeParam.color} strokeWidth={2.5}
+                dot={{ r: 3, fill: activeParam.color, strokeWidth: 0 }} activeDot={{ r: 5 }} unit={activeParam.unit} />
             </LineChart>
           </ResponsiveContainer>
 

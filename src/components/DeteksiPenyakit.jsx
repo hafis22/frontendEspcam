@@ -23,11 +23,6 @@ function getStatus(penyakit) {
   return 'warn';
 }
 
-const dummyRiwayat = [
-  { foto: null, penyakit: 'Bercak daun', confidence: 83, waktu: '13:15', tanggal: '05 Mei 2026' },
-  { foto: null, penyakit: 'Sehat',       confidence: 97, waktu: '11:04', tanggal: '05 Mei 2026' },
-];
-
 const VPS = 'https://backendescam-production.up.railway.app';
 
 function ModalFoto({ item, onClose }) {
@@ -81,7 +76,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [preview, setPreview]         = useState(null);
   const [loading, setLoading]         = useState(false);
   const [hasil, setHasil]             = useState(null);
-  const [riwayat, setRiwayat]         = useState(dummyRiwayat);
+  const [riwayat, setRiwayat]         = useState([]);
   const [modalItem, setModalItem]     = useState(null);
   const [esp32Online, setEsp32Online] = useState(false);
   const [esp32IP, setEsp32IP]         = useState('');
@@ -147,6 +142,24 @@ function DeteksiPenyakit({ isMobile = false }) {
       } catch {}
     }, 3000);
   };
+
+  // Load riwayat deteksi dari DB saat pertama kali
+  useEffect(() => {
+    fetch(`${VPS}/api/history/deteksi`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setRiwayat(data.map(d => ({
+            foto:       null,
+            penyakit:   d.penyakit,
+            confidence: d.confidence,
+            waktu:      new Date(d.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            tanggal:    new Date(d.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => () => stopPolling(), []);
 

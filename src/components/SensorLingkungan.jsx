@@ -1,28 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts';
 
-const now = new Date();
-const histori = {
-  temperature: Array.from({ length: 12 }, (_, i) => ({
-    v: +(26 + Math.sin(i * 0.8) * 2 + Math.random()).toFixed(1),
-    time: new Date(now - (11 - i) * 5 * 60000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    date: new Date(now - (11 - i) * 5 * 60000).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-  })),
-  humidity: Array.from({ length: 12 }, (_, i) => ({
-    v: +(70 + Math.sin(i * 0.5) * 5 + Math.random()).toFixed(1),
-    time: new Date(now - (11 - i) * 5 * 60000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    date: new Date(now - (11 - i) * 5 * 60000).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-  })),
-  lux: Array.from({ length: 12 }, (_, i) => ({
-    v: +(900 + Math.sin(i * 0.6) * 200 + Math.random() * 50).toFixed(0),
-    time: new Date(now - (11 - i) * 5 * 60000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    date: new Date(now - (11 - i) * 5 * 60000).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-  })),
-};
-
+const API = 'https://backendescam-production.up.railway.app';
 const colors = { temperature: '#ef4444', humidity: '#0ea5e9', lux: '#f59e0b' };
 const units  = { temperature: '°C', humidity: '%', lux: 'lx' };
 
@@ -40,8 +22,8 @@ function CustomTooltip({ active, payload }) {
   return null;
 }
 
-function Modal({ label, icon, chartKey, onClose }) {
-  const data   = histori[chartKey];
+function Modal({ label, icon, chartKey, histori, onClose }) {
+  const data   = histori[chartKey] || [];
   const color  = colors[chartKey];
   const unit   = units[chartKey];
   const latest = data[data.length - 1];
@@ -56,11 +38,17 @@ function Modal({ label, icon, chartKey, onClose }) {
           </div>
           <button onClick={onClose} style={styles.closeBtn}>✕</button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
-          <span style={{ fontSize: 36, fontWeight: 500, color }}>{latest.v}</span>
-          <span style={{ fontSize: 16, color: '#475569' }}>{unit}</span>
-        </div>
-        <div style={{ fontSize: 12, color: '#000000', marginBottom: 20 }}>{latest.date} — {latest.time}</div>
+        {latest ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 36, fontWeight: 500, color }}>{latest.v}</span>
+              <span style={{ fontSize: 16, color: '#475569' }}>{unit}</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#000000', marginBottom: 20 }}>{latest.date} — {latest.time}</div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>Belum ada data</div>
+        )}
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -87,10 +75,11 @@ function Modal({ label, icon, chartKey, onClose }) {
   );
 }
 
-function MiniLineChart({ chartKey }) {
+function MiniLineChart({ chartKey, histori }) {
+  const data = histori[chartKey] || [];
   return (
     <ResponsiveContainer width="100%" height={48}>
-      <LineChart data={histori[chartKey]}>
+      <LineChart data={data}>
         <Line type="natural" dataKey="v" stroke={colors[chartKey]} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
         <Tooltip content={<CustomTooltip />} />
       </LineChart>
@@ -98,7 +87,7 @@ function MiniLineChart({ chartKey }) {
   );
 }
 
-function MetricCard({ icon, label, value, unit, chartKey }) {
+function MetricCard({ icon, label, value, unit, chartKey, histori }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -109,22 +98,44 @@ function MetricCard({ icon, label, value, unit, chartKey }) {
           {typeof value === 'number' ? value.toLocaleString() : value}
         </div>
         <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>{unit}</div>
-        <div style={{ marginTop: 8 }}><MiniLineChart chartKey={chartKey} /></div>
+        <div style={{ marginTop: 8 }}><MiniLineChart chartKey={chartKey} histori={histori} /></div>
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, textAlign: 'right' }}>Tap untuk detail →</div>
       </div>
-      {open && <Modal label={label} icon={icon} chartKey={chartKey} onClose={() => setOpen(false)} />}
+      {open && <Modal label={label} icon={icon} chartKey={chartKey} histori={histori} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
 function SensorLingkungan({ data }) {
+  const [histori, setHistori] = useState({ temperature: [], humidity: [], lux: [] });
+
+  useEffect(() => {
+    fetch(`${API}/api/history/sensor`)
+      .then(r => r.json())
+      .then(rows => {
+        if (!Array.isArray(rows)) return;
+        const toPoint = (r, key) => ({
+          v:    r.lingkungan?.[key] ?? 0,
+          time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+        });
+        const sorted = [...rows].reverse().slice(0, 20);
+        setHistori({
+          temperature: sorted.map(r => toPoint(r, 'temperature')),
+          humidity:    sorted.map(r => toPoint(r, 'humidity')),
+          lux:         sorted.map(r => toPoint(r, 'lux')),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div style={{ marginBottom: 24 }}>
       <p style={styles.sectionLabel}>Sensor lingkungan</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-        <MetricCard label="Temperature" value={data.temperature} unit="°C" chartKey="temperature" />
-        <MetricCard label="Humidity"    value={data.humidity}    unit="%"  chartKey="humidity" />
-        <MetricCard label="Lux"         value={data.lux}         unit="lx" chartKey="lux" />
+        <MetricCard label="Temperature" value={data.temperature} unit="°C" chartKey="temperature" histori={histori} />
+        <MetricCard label="Humidity"    value={data.humidity}    unit="%"  chartKey="humidity"    histori={histori} />
+        <MetricCard label="Lux"         value={data.lux}         unit="lx" chartKey="lux"         histori={histori} />
       </div>
     </div>
   );
