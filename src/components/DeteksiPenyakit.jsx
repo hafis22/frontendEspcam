@@ -85,7 +85,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [modalItem, setModalItem]     = useState(null);
   const [esp32Online, setEsp32Online] = useState(false);
   const [esp32IP, setEsp32IP]         = useState('');
-  const [lastHasil, setLastHasil]     = useState('');  // eslint-disable-line no-unused-vars
+  const [lastHasil, setLastHasil]     = useState('');
   const [esp32Frame, setEsp32Frame]   = useState(null);
   const frameRef = useRef(null);
 
@@ -116,7 +116,7 @@ function DeteksiPenyakit({ isMobile = false }) {
     if (frameRef.current) return;
     frameRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`${VPS}/api/esp32/capture?t=${Date.now()}`);
+        const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
         if (!res.ok) { setEsp32Online(false); return; }
         const blob = await res.blob();
         const url  = URL.createObjectURL(blob);
@@ -130,12 +130,22 @@ function DeteksiPenyakit({ isMobile = false }) {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     pollRef.current = setInterval(async () => {
       try {
-        const res  = await fetch(`${VPS}/api/esp32/ip`);
+        const res  = await fetch(`${VPS}/api/esp32/hasil`);
         const data = await res.json();
-        if (!data.online) { setEsp32Online(false); return; }
-        setEsp32Online(true);
+        if (data.penyakit && data.penyakit !== lastHasil) {
+          setLastHasil(data.penyakit);
+          setHasil(data);
+          const now = new Date(data.timestamp || Date.now());
+          setRiwayat(prev => [{
+            foto:       null,
+            penyakit:   data.penyakit,
+            confidence: data.confidence,
+            waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            tanggal:    now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+          }, ...prev.slice(0, 9)]);
+        }
       } catch {}
-    }, 5000);
+    }, 3000);
   };
 
   useEffect(() => () => stopPolling(), []);
