@@ -10,9 +10,9 @@ function CameraIcon({ size = 32, color = '#94a3b8' }) {
 }
 
 const pillStyle = {
-  healthy: { background: '#dcfce7', color: '#166534' },
-  warn:    { background: '#fef9c3', color: '#854d0e' },
-  danger:  { background: '#fee2e2', color: '#991b1b' },
+  healthy: { background: '#16a34a', color: '#fff' },
+  warn:    { background: '#d97706', color: '#fff' },
+  danger:  { background: '#dc2626', color: '#fff' },
 };
 
 function getStatus(penyakit) {
@@ -326,7 +326,7 @@ function DeteksiPenyakit({ isMobile = false }) {
 
                 <button
                   onClick={handleDiskonekEsp32}
-                  style={{ ...styles.btnGray, marginTop: 10, width: '100%' }}
+                  style={{ ...styles.btnGray, marginTop: 10, width: '100%', borderColor: '#fca5a5', color: '#dc2626' }}
                 >
                   Diskonek ESP32
                 </button>
