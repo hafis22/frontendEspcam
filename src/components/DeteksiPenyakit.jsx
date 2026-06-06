@@ -82,6 +82,8 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
   const [esp32Frame, setEsp32Frame]   = useState(null);
+  const [esp32Processing, setEsp32Processing] = useState(false); // freeze saat deteksi
+  const [frozenFrame, setFrozenFrame] = useState(null); // frame yang di-freeze
   const frameRef = useRef(null);
 
   // ── Cek ESP32 via backend ─────────────────────────
@@ -112,11 +114,18 @@ function DeteksiPenyakit({ isMobile = false }) {
     frameRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
-        if (!res.ok) { setEsp32Online(false); return; }
+        if (!res.ok) {
+          // 503 = ESP32 sedang proses (isUploading=true), freeze di frame terakhir
+          if (res.status === 503) setEsp32Processing(true);
+          else setEsp32Online(false);
+          return;
+        }
         const blob = await res.blob();
         const url  = URL.createObjectURL(blob);
         setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+        setFrozenFrame(url); // simpan sebagai frozen frame
         setEsp32Online(true);
+        setEsp32Processing(false); // frame masuk lagi = proses selesai
       } catch { setEsp32Online(false); }
     }, 500);
   };
@@ -299,14 +308,41 @@ function DeteksiPenyakit({ isMobile = false }) {
                   cursor: 'default',
                   background: '#000',
                 }}>
-                  {esp32Frame
-                    ? <img src={esp32Frame} alt="ESP32 Live"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {/* Tampilkan frozen frame saat proses, live frame saat normal */}
+                  {(esp32Processing ? frozenFrame : esp32Frame)
+                    ? <img
+                        src={esp32Processing ? frozenFrame : esp32Frame}
+                        alt="ESP32 Live"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover',
+                          filter: esp32Processing ? 'brightness(0.6)' : 'none',
+                          transition: 'filter 0.3s'
+                        }}
+                      />
                     : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center' }}>
                         <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
                         Menghubungkan ke kamera...
                       </div>
                   }
+
+                  {/* Overlay loading saat deteksi */}
+                  {esp32Processing && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center', gap: 8
+                    }}>
+                      <div style={{
+                        width: 36, height: 36, border: '3px solid rgba(255,255,255,0.3)',
+                        borderTopColor: '#fff', borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite'
+                      }} />
+                      <span style={{ color: '#fff', fontSize: 12, fontWeight: 500,
+                        background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: 999 }}>
+                        Mendeteksi...
+                      </span>
+                    </div>
+                  )}
+
                   {/* Badge status */}
                   <div style={styles.esp32Badge}>
                     <div style={{
@@ -314,7 +350,7 @@ function DeteksiPenyakit({ isMobile = false }) {
                       background: esp32Online ? '#4ade80' : '#f87171'
                     }} />
                     <span style={{ fontSize: 11, color: '#fff' }}>
-                      {esp32Online ? 'ESP32 Online' : 'Connecting...'}
+                      {esp32Processing ? 'Mendeteksi...' : esp32Online ? 'ESP32 Online' : 'Connecting...'}
                     </span>
                     {esp32IP && (
                       <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>
