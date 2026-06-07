@@ -127,7 +127,7 @@ function DeteksiPenyakit({ isMobile = false }) {
         setEsp32Online(true);
         setEsp32Processing(false); // frame masuk lagi = proses selesai
       } catch { setEsp32Online(false); }
-    }, 500);
+    }, 1000);
   };
 
   const startPolling = () => {
