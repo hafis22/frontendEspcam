@@ -110,23 +110,28 @@ function SensorLingkungan({ data }) {
   const [histori, setHistori] = useState({ temperature: [], humidity: [], lux: [] });
 
   useEffect(() => {
-    fetch(`${API}/api/history/sensor`)
-      .then(r => r.json())
-      .then(rows => {
-        if (!Array.isArray(rows)) return;
-        const toPoint = (r, key) => ({
-          v:    r.lingkungan?.[key] ?? 0,
-          time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-        });
-        const sorted = [...rows].reverse().slice(0, 20);
-        setHistori({
-          temperature: sorted.map(r => toPoint(r, 'temperature')),
-          humidity:    sorted.map(r => toPoint(r, 'humidity')),
-          lux:         sorted.map(r => toPoint(r, 'lux')),
-        });
-      })
-      .catch(() => {});
+    const fetchHistory = () => {
+      fetch(`${API}/api/history/sensor`)
+        .then(r => r.json())
+        .then(rows => {
+          if (!Array.isArray(rows)) return;
+          const toPoint = (r, key) => ({
+            v:    r.lingkungan?.[key] ?? 0,
+            time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+          });
+          const sorted = [...rows].reverse().slice(0, 20);
+          setHistori({
+            temperature: sorted.map(r => toPoint(r, 'temperature')),
+            humidity:    sorted.map(r => toPoint(r, 'humidity')),
+            lux:         sorted.map(r => toPoint(r, 'lux')),
+          });
+        })
+        .catch(() => {});
+    };
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   return (

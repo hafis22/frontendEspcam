@@ -48,22 +48,27 @@ function SensorTanaman({ data, isMobile = false }) {
   const [histori, setHistori] = useState({});
 
   useEffect(() => {
-    fetch(`${API}/api/history/sensor`)
-      .then(r => r.json())
-      .then(rows => {
-        if (!Array.isArray(rows)) return;
-        const sorted = [...rows].reverse().slice(0, 20);
-        const result = {};
-        params.forEach(p => {
-          result[p.key] = sorted.map(r => ({
-            v:    r.tanaman?.[p.key] ?? 0,
-            time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-          }));
-        });
-        setHistori(result);
-      })
-      .catch(() => {});
+    const fetchHistory = () => {
+      fetch(`${API}/api/history/sensor`)
+        .then(r => r.json())
+        .then(rows => {
+          if (!Array.isArray(rows)) return;
+          const sorted = [...rows].reverse().slice(0, 20);
+          const result = {};
+          params.forEach(p => {
+            result[p.key] = sorted.map(r => ({
+              v:    r.tanaman?.[p.key] ?? 0,
+              time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+              date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+            }));
+          });
+          setHistori(result);
+        })
+        .catch(() => {});
+    };
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const activeParam = params.find(p => p.key === active);
