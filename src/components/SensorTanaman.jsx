@@ -53,10 +53,14 @@ function SensorTanaman({ data, isMobile = false }) {
         .then(r => r.json())
         .then(rows => {
           if (!Array.isArray(rows)) return;
-          const sorted = [...rows].reverse().slice(0, 20);
+          // Filter hanya rows yang punya data tanaman (bukan rows lingkungan)
+          const tanamanRows = rows
+            .filter(r => r.tanaman?.temperature !== null && r.tanaman?.temperature !== undefined)
+            .slice(0, 20)
+            .reverse(); // terlama di kiri, terbaru di kanan grafik
           const result = {};
           params.forEach(p => {
-            result[p.key] = sorted.map(r => ({
+            result[p.key] = tanamanRows.map(r => ({
               v:    r.tanaman?.[p.key] ?? 0,
               time: new Date(r.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
               date: new Date(r.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),

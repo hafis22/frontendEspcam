@@ -106,28 +106,46 @@ function DeteksiPenyakit({ isMobile = false }) {
   // ── Poll frame capture tiap 500ms sebagai live view ──
   const stopPolling = () => {
     if (pollRef.current)  { clearInterval(pollRef.current);  pollRef.current  = null; }
-    if (frameRef.current) { clearInterval(frameRef.current); frameRef.current = null; }
+    if (frameRef.current) {
+      frameRef.current.close();
+      frameRef.current = null;
+    }
   };
 
   const startFramePolling = () => {
     if (frameRef.current) return;
-    frameRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
-        if (!res.ok) {
-          // 503 = ESP32 sedang proses (isUploading=true), freeze di frame terakhir
-          if (res.status === 503) setEsp32Processing(true);
-          else setEsp32Online(false);
-          return;
-        }
-        const blob = await res.blob();
-        const url  = URL.createObjectURL(blob);
-        setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
-        setFrozenFrame(url); // simpan sebagai frozen frame
-        setEsp32Online(true);
-        setEsp32Processing(false); // frame masuk lagi = proses selesai
-      } catch { setEsp32Online(false); }
-    }, 1000);
+    const wsUrl = VPS.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/frame';
+    const ws = new WebSocket(wsUrl);
+    ws.binaryType = 'blob';
+
+    ws.onopen = () => {
+      setEsp32Online(true);
+      setEsp32Processing(false);
+    };
+
+    ws.onmessage = (event) => {
+      const blob = event.data;
+      const url  = URL.createObjectURL(blob);
+      setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+      setFrozenFrame(url);
+      setEsp32Online(true);
+      setEsp32Processing(false);
+    };
+
+    ws.onclose = () => {
+      setEsp32Online(false);
+      frameRef.current = null;
+      // Reconnect setelah 2 detik
+      setTimeout(() => {
+        if (frameRef.current === null) startFramePolling();
+      }, 2000);
+    };
+
+    ws.onerror = () => {
+      setEsp32Online(false);
+    };
+
+    frameRef.current = ws;
   };
 
   const startPolling = () => {
