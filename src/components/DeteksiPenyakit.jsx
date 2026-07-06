@@ -25,8 +25,6 @@ function getStatus(penyakit) {
   return 'warn';
 }
 
-const VPS = undefined; // diganti import di bawah
-
 function ModalFoto({ item, onClose }) {
   return (
     <div style={styles.overlay} onClick={onClose}>
