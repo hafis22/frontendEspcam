@@ -85,7 +85,6 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32Frame, setEsp32Frame]         = useState(null);   // blob URL frame live
   const [esp32Status, setEsp32Status]       = useState('idle'); // idle|connecting|live|no-frame|error
   const [esp32Detecting, setEsp32Detecting] = useState(false);  // YOLO sedang jalan
-  const [frozenFrame, setFrozenFrame]       = useState(null);   // frame yang di-freeze saat detect
   const [capturedFoto, setCapturedFoto]     = useState(null);   // base64 foto yang diambil ESP32
   const [esp32IP, setEsp32IP]               = useState('');
 
@@ -114,7 +113,6 @@ function DeteksiPenyakit({ isMobile = false }) {
         // Hanya tampilkan kalau tidak sedang mendeteksi
         const url = URL.createObjectURL(event.data);
         setFrame(url);
-        setFrozenFrame(url);
         setEsp32Status('live');
 
       } else if (typeof event.data === 'string') {
@@ -176,7 +174,6 @@ function DeteksiPenyakit({ isMobile = false }) {
       wsRef.current = null;
     }
     setFrame(null);
-    setFrozenFrame(null);
     setEsp32Status('idle');
     setEsp32Detecting(false);
   }, [setFrame]);
