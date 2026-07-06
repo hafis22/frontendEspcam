@@ -199,6 +199,26 @@ function DeteksiPenyakit({ isMobile = false }) {
       .catch(() => {});
   }, []);
 
+  // Auto-connect ESP32 saat komponen pertama kali mount
+  useEffect(() => {
+    const autoConnect = async () => {
+      try {
+        const res  = await fetch(`${VPS}/api/esp32/ip`, { signal: AbortSignal.timeout(5000) });
+        const data = await res.json();
+        if (data.ip) {
+          setEsp32IP(data.ip);
+          setEsp32Online(data.online || false);
+          setMode('esp32');
+          startPolling();
+          startFramePolling();
+        }
+      } catch {
+        // ESP32 tidak ada — diam saja, user bisa klik manual
+      }
+    };
+    autoConnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => () => stopPolling(), []);
 
   // ── Konek ESP32 ───────────────────────────────────
@@ -319,7 +339,7 @@ function DeteksiPenyakit({ isMobile = false }) {
             onClick={() => mode === 'esp32' ? handleDiskonekEsp32() : handleKonekEsp32()}
             style={{ ...styles.modeBtn, ...(mode === 'esp32' ? styles.modeBtnActiveBlue : {}) }}
           >
-            📷 ESP32-CAM {mode === 'esp32' && esp32Online ? '🟢' : ''}
+            📷 ESP32-CAM {mode === 'esp32' ? (esp32Status === 'live' ? '🟢' : '🟡') : ''}
           </button>
         </div>
 
