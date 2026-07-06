@@ -118,12 +118,15 @@ function DeteksiPenyakit({ isMobile = false }) {
         const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
         if (!res.ok) {
           if (res.status === 503) {
-            // Backend belum punya frame dari ESP32
+            // Backend belum punya frame dari ESP32 atau frame sudah stale
             setEsp32Status('no-frame');
             setEsp32Online(false);
+            // Clear frame lama supaya tidak tampil gambar basi
+            setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
           } else {
             setEsp32Status('error');
             setEsp32Online(false);
+            setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
           }
           return;
         }
