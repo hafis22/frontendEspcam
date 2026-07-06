@@ -86,6 +86,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32Status, setEsp32Status]       = useState('idle'); // idle|connecting|live|no-frame|error
   const [esp32Detecting, setEsp32Detecting] = useState(false);  // YOLO sedang jalan
   const [frozenFrame, setFrozenFrame]       = useState(null);   // frame yang di-freeze saat detect
+  const [capturedFoto, setCapturedFoto]     = useState(null);   // base64 foto yang diambil ESP32
   const [esp32IP, setEsp32IP]               = useState('');
 
   // ── Cleanup blob URL ──────────────────────────────────
@@ -109,25 +110,33 @@ function DeteksiPenyakit({ isMobile = false }) {
 
     ws.onmessage = (event) => {
       if (event.data instanceof Blob) {
-        // Binary = frame JPEG dari ESP32
+        // Binary = frame JPEG live dari ESP32
+        // Hanya tampilkan kalau tidak sedang mendeteksi
         const url = URL.createObjectURL(event.data);
         setFrame(url);
         setFrozenFrame(url);
         setEsp32Status('live');
-        setEsp32Detecting(false);
 
       } else if (typeof event.data === 'string') {
-        // JSON = hasil deteksi atau event dari backend
+        // JSON = event dari backend
         try {
           const data = JSON.parse(event.data);
 
-          if (data.type === 'detect_result') {
+          if (data.type === 'detect_frame') {
+            // Foto sudah diambil ESP32 — tampilkan foto, berhenti live, tunggu YOLO
+            setCapturedFoto(data.foto);
+            setEsp32Detecting(true);
+            setEsp32Status('live'); // status tetap live, tapi frame di-freeze
+
+          } else if (data.type === 'detect_result') {
+            // YOLO selesai — tampil hasil, masuk riwayat, resume live
             setEsp32Detecting(false);
+            setCapturedFoto(null);  // hapus captured foto, live resume
             setHasil({ penyakit: data.penyakit, confidence: data.confidence });
 
             const now = new Date(data.timestamp || Date.now());
             setRiwayat(prev => [{
-              foto:       null,
+              foto:       data.foto || null,  // base64 foto dari backend
               penyakit:   data.penyakit,
               confidence: data.confidence,
               waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
@@ -136,6 +145,7 @@ function DeteksiPenyakit({ isMobile = false }) {
 
           } else if (data.type === 'detect_error') {
             setEsp32Detecting(false);
+            setCapturedFoto(null);  // error — resume live
             console.error('[WS] Detect error:', data.message);
           }
         } catch (e) {
@@ -332,34 +342,39 @@ function DeteksiPenyakit({ isMobile = false }) {
               <div>
                 <div style={{ ...styles.cameraBox, borderColor: '#3b82f6', borderStyle: 'solid', cursor: 'default', background: '#000' }}>
 
-                  {/* Gambar: frozen saat detect, live saat normal */}
-                  {(esp32Detecting ? frozenFrame : esp32Frame)
-                    ? <img
-                        src={esp32Detecting ? frozenFrame : esp32Frame}
-                        alt="ESP32 Live"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover',
-                          filter: esp32Detecting ? 'brightness(0.55)' : 'none',
-                          transition: 'filter 0.3s'
-                        }}
+                  {/* Gambar: foto yang diambil saat detect, live saat normal */}
+                  {capturedFoto
+                    ? /* Sedang deteksi — tampil foto yang diambil ESP32 */
+                      <img
+                        src={capturedFoto}
+                        alt="Foto deteksi"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
-                    : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', padding: '0 16px' }}>
-                        {esp32Status === 'connecting' && <><div style={{ fontSize: 28, marginBottom: 8 }}>📡</div><div>Menghubungkan ke ESP32-CAM...</div></>}
-                        {esp32Status === 'no-frame'   && <><div style={{ fontSize: 28, marginBottom: 8 }}>📷</div><div style={{ color: '#fbbf24' }}>Menunggu frame dari ESP32...</div>
-                          <button onClick={() => { if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; } connectWS(); }}
-                            style={{ marginTop: 10, padding: '6px 14px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
-                            🔄 Coba Lagi
-                          </button>
-                        </>}
-                        {esp32Status === 'error' && <><div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div><div style={{ color: '#f87171' }}>Gagal konek ke kamera.</div></>}
-                        {(esp32Status === 'live' || esp32Status === 'connecting') && esp32Status !== 'no-frame' && esp32Status !== 'error' &&
-                          <><div style={{ fontSize: 28, marginBottom: 8 }}>📷</div><div>Menunggu frame pertama...</div></>
-                        }
-                      </div>
+                    : /* Live mode — tampil frame streaming */
+                      esp32Frame
+                        ? <img
+                            src={esp32Frame}
+                            alt="ESP32 Live"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', padding: '0 16px' }}>
+                            {esp32Status === 'connecting' && <><div style={{ fontSize: 28, marginBottom: 8 }}>📡</div><div>Menghubungkan ke ESP32-CAM...</div></>}
+                            {esp32Status === 'no-frame'   && <><div style={{ fontSize: 28, marginBottom: 8 }}>📷</div><div style={{ color: '#fbbf24' }}>Menunggu frame dari ESP32...</div>
+                              <button onClick={() => { if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; } connectWS(); }}
+                                style={{ marginTop: 10, padding: '6px 14px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+                                🔄 Coba Lagi
+                              </button>
+                            </>}
+                            {esp32Status === 'error' && <><div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div><div style={{ color: '#f87171' }}>Gagal konek ke kamera.</div></>}
+                            {(esp32Status === 'live' || esp32Status === 'connecting') && esp32Status !== 'no-frame' && esp32Status !== 'error' &&
+                              <><div style={{ fontSize: 28, marginBottom: 8 }}>📷</div><div>Menunggu frame pertama...</div></>
+                            }
+                          </div>
                   }
 
-                  {/* Overlay loading deteksi */}
+                  {/* Overlay spinner saat YOLO memproses */}
                   {esp32Detecting && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'rgba(0,0,0,0.35)' }}>
                       <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                       <span style={{ color: '#fff', fontSize: 12, fontWeight: 500, background: 'rgba(0,0,0,0.55)', padding: '3px 10px', borderRadius: 999 }}>
                         Mendeteksi penyakit...
