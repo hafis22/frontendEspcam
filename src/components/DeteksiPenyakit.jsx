@@ -78,7 +78,6 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [hasil, setHasil]             = useState(null);
   const [riwayat, setRiwayat]         = useState([]);
   const [modalItem, setModalItem]     = useState(null);
-  const [esp32Online, setEsp32Online] = useState(false);
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
   const [esp32Frame, setEsp32Frame]   = useState(null);
@@ -95,12 +94,10 @@ function DeteksiPenyakit({ isMobile = false }) {
       });
       const data = await res.json();
       setEsp32IP(data.ip || '');
-      setEsp32Online(data.online || false);
       // Tetap lanjut koneksi kalau ada IP, meski online=false
       // (ESP32 mungkin baru nyala dan belum kirim frame)
       return !!data.ip;
     } catch {}
-    setEsp32Online(false);
     return false;
   };
 
@@ -121,11 +118,9 @@ function DeteksiPenyakit({ isMobile = false }) {
           failCount++;
           if (res.status === 503) {
             setEsp32Status('no-frame');
-            setEsp32Online(false);
             setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
           } else {
             setEsp32Status('error');
-            setEsp32Online(false);
             setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
           }
           // Stop polling setelah 5x gagal berturut-turut
@@ -142,11 +137,9 @@ function DeteksiPenyakit({ isMobile = false }) {
         const url  = URL.createObjectURL(blob);
         setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
         setFrozenFrame(url);
-        setEsp32Online(true);
         setEsp32Status('live');
         setEsp32Processing(false);
       } catch {
-        setEsp32Online(false);
         setEsp32Status('error');
         failCount++;
         if (failCount >= 5) {
@@ -207,7 +200,6 @@ function DeteksiPenyakit({ isMobile = false }) {
         const data = await res.json();
         if (data.ip) {
           setEsp32IP(data.ip);
-          setEsp32Online(data.online || false);
           setMode('esp32');
           startPolling();
           startFramePolling();
@@ -236,7 +228,6 @@ function DeteksiPenyakit({ isMobile = false }) {
   const handleDiskonekEsp32 = () => {
     stopPolling();
     setMode('idle');
-    setEsp32Online(false);
     setHasil(null);
     setLastHasil('');
     setEsp32IP('');
