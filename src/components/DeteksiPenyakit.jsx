@@ -113,23 +113,31 @@ function DeteksiPenyakit({ isMobile = false }) {
   const startFramePolling = () => {
     if (frameRef.current) return;
     setEsp32Status('connecting');
+    let failCount = 0;
     frameRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
         if (!res.ok) {
+          failCount++;
           if (res.status === 503) {
-            // Backend belum punya frame dari ESP32 atau frame sudah stale
             setEsp32Status('no-frame');
             setEsp32Online(false);
-            // Clear frame lama supaya tidak tampil gambar basi
             setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
           } else {
             setEsp32Status('error');
             setEsp32Online(false);
             setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
           }
+          // Stop polling setelah 5x gagal berturut-turut
+          if (failCount >= 5) {
+            clearInterval(frameRef.current);
+            frameRef.current = null;
+            setEsp32Status('no-frame');
+          }
           return;
         }
+        // Berhasil dapat frame — reset counter
+        failCount = 0;
         const blob = await res.blob();
         const url  = URL.createObjectURL(blob);
         setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
@@ -140,6 +148,11 @@ function DeteksiPenyakit({ isMobile = false }) {
       } catch {
         setEsp32Online(false);
         setEsp32Status('error');
+        failCount++;
+        if (failCount >= 5) {
+          clearInterval(frameRef.current);
+          frameRef.current = null;
+        }
       }
     }, 1000);
   };
@@ -342,8 +355,13 @@ function DeteksiPenyakit({ isMobile = false }) {
                         </>}
                         {esp32Status === 'no-frame' && <>
                           <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
-                          <div style={{ color: '#fbbf24' }}>ESP32 terdaftar tapi belum kirim frame.</div>
+                          <div style={{ color: '#fbbf24' }}>ESP32 belum kirim frame.</div>
                           <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Pastikan ESP32 menyala & terhubung WiFi.</div>
+                          <button onClick={() => startFramePolling()} style={{
+                            marginTop: 10, padding: '6px 14px', background: '#3b82f6',
+                            color: '#fff', border: 'none', borderRadius: 8,
+                            fontSize: 12, cursor: 'pointer'
+                          }}>🔄 Coba Lagi</button>
                         </>}
                         {esp32Status === 'error' && <>
                           <div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div>
