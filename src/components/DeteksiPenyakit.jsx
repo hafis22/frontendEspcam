@@ -129,7 +129,7 @@ function DeteksiPenyakit({ isMobile = false }) {
     }, 1000);
   };
 
-  const startHttpPolling = startFramePolling;
+
 
   const startPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
