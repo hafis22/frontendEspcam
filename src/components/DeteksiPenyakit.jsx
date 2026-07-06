@@ -145,6 +145,14 @@ function DeteksiPenyakit({ isMobile = false }) {
             setEsp32Detecting(false);
             setCapturedFoto(null);  // error — resume live
             console.error('[WS] Detect error:', data.message);
+
+          } else if (data.type === 'esp32_offline') {
+            // ESP32 cabut daya / disconnect — clear frame, tampil placeholder
+            setFrame(null);
+            setEsp32Detecting(false);
+            setCapturedFoto(null);
+            setEsp32Status('no-frame');
+            console.log('[WS] ESP32 offline');
           }
         } catch (e) {
           console.warn('[WS] Pesan tidak valid:', event.data);
