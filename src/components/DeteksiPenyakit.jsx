@@ -84,8 +84,8 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32Processing, setEsp32Processing] = useState(false);
   const [esp32Status, setEsp32Status] = useState('idle');
   const [frozenFrame, setFrozenFrame] = useState(null);
-  const frameRef    = useRef(null);
-  const lastHasilRef = useRef(''); // pakai ref supaya tidak stale di closure
+  const frameRef    = useRef(null); // WebSocket ref
+  const lastHasilRef = useRef('');
 
   // sync lastHasil ke ref
   useEffect(() => { lastHasilRef.current = lastHasil; }, [lastHasil]);
@@ -98,67 +98,66 @@ function DeteksiPenyakit({ isMobile = false }) {
       });
       const data = await res.json();
       setEsp32IP(data.ip || '');
-      // Tetap lanjut koneksi kalau ada IP, meski online=false
-      // (ESP32 mungkin baru nyala dan belum kirim frame)
       return !!data.ip;
     } catch {}
     return false;
   };
 
-  // ── Poll frame capture tiap 500ms sebagai live view ──
+  // ── Stop semua koneksi ────────────────────────────
   const stopPolling = () => {
-    if (pollRef.current)  { clearInterval(pollRef.current);  pollRef.current  = null; }
-    if (frameRef.current) { clearInterval(frameRef.current); frameRef.current = null; }
+    if (pollRef.current)  { clearInterval(pollRef.current); pollRef.current = null; }
+    if (frameRef.current) {
+      frameRef.current.onmessage = null;
+      frameRef.current.onerror   = null;
+      frameRef.current.onclose   = null;
+      frameRef.current.close();
+      frameRef.current = null;
+    }
   };
 
+  // ── WebSocket live frame dari backend ─────────────
   const startFramePolling = useCallback(() => {
-    // Kalau sudah jalan, jangan buat duplikat
-    if (frameRef.current) return;
+    // Kalau sudah ada WS terbuka, jangan buat duplikat
+    if (frameRef.current && frameRef.current.readyState <= 1) return;
+
     setEsp32Status('connecting');
-    let failCount = 0;
 
-    frameRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
-        if (!res.ok) {
-          failCount++;
-          setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-          if (res.status === 503) setEsp32Status('no-frame');
-          else setEsp32Status('error');
+    // ws:// untuk http, wss:// untuk https
+    const wsUrl = VPS.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/frame';
+    const ws = new WebSocket(wsUrl);
+    ws.binaryType = 'blob';
+    frameRef.current = ws;
 
-          // Setelah 10x gagal, pause 5 detik lalu restart polling otomatis
-          if (failCount >= 10) {
-            clearInterval(frameRef.current);
-            frameRef.current = null;
-            setEsp32Status('no-frame');
-            setTimeout(() => {
-              // Restart otomatis kalau masih di mode esp32
-              setEsp32Status(prev => {
-                if (prev === 'no-frame' || prev === 'error') {
-                  // Trigger restart
-                  frameRef.current = null;
-                }
-                return prev;
-              });
-            }, 5000);
-          }
-          return;
+    ws.onopen = () => {
+      console.log('[WS] Terhubung ke /ws/frame');
+      setEsp32Status('connecting'); // tunggu frame pertama
+    };
+
+    ws.onmessage = (event) => {
+      // event.data adalah Blob (JPEG binary)
+      const url = URL.createObjectURL(event.data);
+      setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+      setFrozenFrame(url);
+      setEsp32Status('live');
+      setEsp32Processing(false);
+    };
+
+    ws.onerror = () => {
+      setEsp32Status('error');
+      setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+
+    ws.onclose = () => {
+      // Auto-reconnect setelah 3 detik kalau masih di mode esp32
+      setEsp32Status(prev => {
+        if (prev === 'live' || prev === 'connecting' || prev === 'error') {
+          setTimeout(() => startFramePolling(), 3000);
+          return 'no-frame';
         }
-        // Berhasil — reset counter
-        failCount = 0;
-        const blob = await res.blob();
-        const url  = URL.createObjectURL(blob);
-        setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
-        setFrozenFrame(url);
-        setEsp32Status('live');
-        setEsp32Processing(false);
-      } catch {
-        failCount++;
-        setEsp32Status('error');
-        setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-      }
-    }, 1000);
-  }, []);
+        return prev;
+      });
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -380,8 +379,10 @@ function DeteksiPenyakit({ isMobile = false }) {
                           <div style={{ color: '#fbbf24' }}>ESP32 belum kirim frame.</div>
                           <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Pastikan ESP32 menyala & terhubung WiFi.</div>
                           <button onClick={() => {
-                            clearInterval(frameRef.current);
-                            frameRef.current = null;
+                            if (frameRef.current) {
+                              frameRef.current.close();
+                              frameRef.current = null;
+                            }
                             startFramePolling();
                           }} style={{
                             marginTop: 10, padding: '6px 14px', background: '#3b82f6',
