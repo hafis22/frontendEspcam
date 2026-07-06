@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 
 const API = 'https://backendescam-production-cc88.up.railway.app';
-
 const params = [
   { key: 'temperature', label: 'Temp',     unit: '°C',    color: '#ef4444' },
   { key: 'humidity',    label: 'Humidity', unit: '%',     color: '#0ea5e9' },

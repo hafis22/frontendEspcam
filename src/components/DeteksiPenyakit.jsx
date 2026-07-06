@@ -1,5 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
+const VPS = 'https://backendescam-production-cc88.up.railway.app';
+
 function CameraIcon({ size = 32, color = '#94a3b8' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -23,7 +25,7 @@ function getStatus(penyakit) {
   return 'warn';
 }
 
-const VPS = 'https://backendescam-production-cc88.up.railway.app';
+const VPS = undefined; // diganti import di bawah
 
 function ModalFoto({ item, onClose }) {
   return (
