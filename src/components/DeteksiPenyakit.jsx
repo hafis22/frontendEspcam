@@ -81,10 +81,14 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
   const [esp32Frame, setEsp32Frame]   = useState(null);
-  const [esp32Processing, setEsp32Processing] = useState(false); // freeze saat deteksi
-  const [esp32Status, setEsp32Status] = useState('idle'); // idle | connecting | live | no-frame | error
-  const [frozenFrame, setFrozenFrame] = useState(null); // frame yang di-freeze
-  const frameRef = useRef(null);
+  const [esp32Processing, setEsp32Processing] = useState(false);
+  const [esp32Status, setEsp32Status] = useState('idle');
+  const [frozenFrame, setFrozenFrame] = useState(null);
+  const frameRef    = useRef(null);
+  const lastHasilRef = useRef(''); // pakai ref supaya tidak stale di closure
+
+  // sync lastHasil ke ref
+  useEffect(() => { lastHasilRef.current = lastHasil; }, [lastHasil]);
 
   // ── Cek ESP32 via backend ─────────────────────────
   const cekEsp32 = async () => {
@@ -107,31 +111,40 @@ function DeteksiPenyakit({ isMobile = false }) {
     if (frameRef.current) { clearInterval(frameRef.current); frameRef.current = null; }
   };
 
-  const startFramePolling = () => {
+  const startFramePolling = useCallback(() => {
+    // Kalau sudah jalan, jangan buat duplikat
     if (frameRef.current) return;
     setEsp32Status('connecting');
     let failCount = 0;
+
     frameRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
         if (!res.ok) {
           failCount++;
-          if (res.status === 503) {
-            setEsp32Status('no-frame');
-            setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-          } else {
-            setEsp32Status('error');
-            setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-          }
-          // Stop polling setelah 5x gagal berturut-turut
-          if (failCount >= 5) {
+          setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+          if (res.status === 503) setEsp32Status('no-frame');
+          else setEsp32Status('error');
+
+          // Setelah 10x gagal, pause 5 detik lalu restart polling otomatis
+          if (failCount >= 10) {
             clearInterval(frameRef.current);
             frameRef.current = null;
             setEsp32Status('no-frame');
+            setTimeout(() => {
+              // Restart otomatis kalau masih di mode esp32
+              setEsp32Status(prev => {
+                if (prev === 'no-frame' || prev === 'error') {
+                  // Trigger restart
+                  frameRef.current = null;
+                }
+                return prev;
+              });
+            }, 5000);
           }
           return;
         }
-        // Berhasil dapat frame — reset counter
+        // Berhasil — reset counter
         failCount = 0;
         const blob = await res.blob();
         const url  = URL.createObjectURL(blob);
@@ -140,25 +153,23 @@ function DeteksiPenyakit({ isMobile = false }) {
         setEsp32Status('live');
         setEsp32Processing(false);
       } catch {
-        setEsp32Status('error');
         failCount++;
-        if (failCount >= 5) {
-          clearInterval(frameRef.current);
-          frameRef.current = null;
-        }
+        setEsp32Status('error');
+        setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
       }
     }, 1000);
-  };
+  }, []);
 
 
 
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     pollRef.current = setInterval(async () => {
       try {
         const res  = await fetch(`${VPS}/api/esp32/hasil`);
         const data = await res.json();
-        if (data.penyakit && data.penyakit !== lastHasil) {
+        if (data.penyakit && data.penyakit !== lastHasilRef.current) {
+          lastHasilRef.current = data.penyakit;
           setLastHasil(data.penyakit);
           setHasil(data);
           const now = new Date(data.timestamp || Date.now());
@@ -172,7 +183,7 @@ function DeteksiPenyakit({ isMobile = false }) {
         }
       } catch {}
     }, 3000);
-  };
+  }, []);
 
   // Load riwayat deteksi dari DB saat pertama kali
   useEffect(() => {
@@ -209,7 +220,7 @@ function DeteksiPenyakit({ isMobile = false }) {
       }
     };
     autoConnect();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startPolling, startFramePolling]);
 
   useEffect(() => () => stopPolling(), []);
 
@@ -368,7 +379,11 @@ function DeteksiPenyakit({ isMobile = false }) {
                           <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
                           <div style={{ color: '#fbbf24' }}>ESP32 belum kirim frame.</div>
                           <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Pastikan ESP32 menyala & terhubung WiFi.</div>
-                          <button onClick={() => startFramePolling()} style={{
+                          <button onClick={() => {
+                            clearInterval(frameRef.current);
+                            frameRef.current = null;
+                            startFramePolling();
+                          }} style={{
                             marginTop: 10, padding: '6px 14px', background: '#3b82f6',
                             color: '#fff', border: 'none', borderRadius: 8,
                             fontSize: 12, cursor: 'pointer'
