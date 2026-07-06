@@ -24,7 +24,7 @@ export default function History({ isMobile = false }) {
   const [deteksiData, setDeteksi] = useState([]);
   const [loading, setLoading]     = useState(false);
 
-const API_URL = 'https://backendescam-production.up.railway.app';
+const API_URL = 'https://backendescam-production-cc88.up.railway.app';
 
   const fetchData = useCallback(async () => {
     setLoading(true);

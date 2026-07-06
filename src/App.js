@@ -5,7 +5,7 @@ import SensorTanaman from './components/SensorTanaman';
 import DeteksiPenyakit from './components/DeteksiPenyakit';
 import History from './components/History';
 
-export const API = 'https://backendescam-production.up.railway.app';
+export const API = 'https://backendescam-production-cc88.up.railway.app';
 
 function DashboardIcon({ active }) {
   return (

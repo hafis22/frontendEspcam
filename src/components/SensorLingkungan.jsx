@@ -4,7 +4,7 @@ import {
   Tooltip, ResponsiveContainer
 } from 'recharts';
 
-const API = 'https://backendescam-production.up.railway.app';
+const API = 'https://backendescam-production-cc88.up.railway.app';
 const colors = { temperature: '#ef4444', humidity: '#0ea5e9', lux: '#f59e0b' };
 const units  = { temperature: '°C', humidity: '%', lux: 'lx' };
 

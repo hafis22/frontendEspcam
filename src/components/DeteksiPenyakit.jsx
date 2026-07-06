@@ -23,7 +23,7 @@ function getStatus(penyakit) {
   return 'warn';
 }
 
-const VPS = 'https://backendescam-production.up.railway.app';
+const VPS = 'https://backendescam-production-cc88.up.railway.app';
 
 function ModalFoto({ item, onClose }) {
   return (
@@ -106,67 +106,11 @@ function DeteksiPenyakit({ isMobile = false }) {
   // ── Poll frame capture tiap 500ms sebagai live view ──
   const stopPolling = () => {
     if (pollRef.current)  { clearInterval(pollRef.current);  pollRef.current  = null; }
-    if (frameRef.current) {
-      if (typeof frameRef.current.close === 'function') frameRef.current.close(); // WebSocket
-      else clearInterval(frameRef.current); // HTTP polling
-      frameRef.current = null;
-    }
+    if (frameRef.current) { clearInterval(frameRef.current); frameRef.current = null; }
   };
 
   const startFramePolling = () => {
     if (frameRef.current) return;
-    
-    // Coba WebSocket dulu, fallback ke HTTP polling kalau gagal
-    try {
-      const wsUrl = VPS.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/frame';
-      const ws = new WebSocket(wsUrl);
-      ws.binaryType = 'blob';
-      let wsWorking = false;
-
-      ws.onopen = () => {
-        wsWorking = true;
-        setEsp32Online(true);
-        setEsp32Processing(false);
-      };
-
-      ws.onmessage = (event) => {
-        const blob = event.data;
-        const url  = URL.createObjectURL(blob);
-        setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
-        setFrozenFrame(url);
-        setEsp32Online(true);
-        setEsp32Processing(false);
-      };
-
-      ws.onerror = () => {
-        if (!wsWorking) startHttpPolling(); // fallback ke HTTP
-      };
-
-      ws.onclose = () => {
-        setEsp32Online(false);
-        frameRef.current = null;
-        setTimeout(() => {
-          if (frameRef.current === null) startFramePolling();
-        }, 2000);
-      };
-
-      frameRef.current = ws;
-
-      // Kalau WS tidak connect dalam 3 detik, fallback ke HTTP
-      setTimeout(() => {
-        if (!wsWorking && frameRef.current === ws) {
-          ws.close();
-          startHttpPolling();
-        }
-      }, 3000);
-
-    } catch (e) {
-      startHttpPolling();
-    }
-  };
-
-  const startHttpPolling = () => {
-    if (frameRef.current && frameRef.current.readyState !== undefined) return; // WS masih ada
     frameRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
@@ -184,6 +128,8 @@ function DeteksiPenyakit({ isMobile = false }) {
       } catch { setEsp32Online(false); }
     }, 1000);
   };
+
+  const startHttpPolling = startFramePolling;
 
   const startPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
