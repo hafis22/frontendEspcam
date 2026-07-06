@@ -82,7 +82,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
   const [esp32Frame, setEsp32Frame]   = useState(null);
-  const [esp32Processing, setEsp32Processing] = useState(false); // freeze saat deteksi
+  const [esp32Status, setEsp32Status] = useState('idle'); // idle | connecting | live | no-frame | error
   const [frozenFrame, setFrozenFrame] = useState(null); // frame yang di-freeze
   const frameRef = useRef(null);
 
@@ -93,11 +93,11 @@ function DeteksiPenyakit({ isMobile = false }) {
         signal: AbortSignal.timeout(5000)
       });
       const data = await res.json();
-      if (data.ip) {
-        setEsp32IP(data.ip);
-        setEsp32Online(data.online);
-        return true; // ada IP = bisa dicoba
-      }
+      setEsp32IP(data.ip || '');
+      setEsp32Online(data.online || false);
+      // Tetap lanjut koneksi kalau ada IP, meski online=false
+      // (ESP32 mungkin baru nyala dan belum kirim frame)
+      return !!data.ip;
     } catch {}
     setEsp32Online(false);
     return false;
@@ -111,12 +111,19 @@ function DeteksiPenyakit({ isMobile = false }) {
 
   const startFramePolling = () => {
     if (frameRef.current) return;
+    setEsp32Status('connecting');
     frameRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${VPS}/api/esp32/frame?t=${Date.now()}`);
         if (!res.ok) {
-          if (res.status === 503) setEsp32Processing(true);
-          else setEsp32Online(false);
+          if (res.status === 503) {
+            // Backend belum punya frame dari ESP32
+            setEsp32Status('no-frame');
+            setEsp32Online(false);
+          } else {
+            setEsp32Status('error');
+            setEsp32Online(false);
+          }
           return;
         }
         const blob = await res.blob();
@@ -124,8 +131,12 @@ function DeteksiPenyakit({ isMobile = false }) {
         setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
         setFrozenFrame(url);
         setEsp32Online(true);
+        setEsp32Status('live');
         setEsp32Processing(false);
-      } catch { setEsp32Online(false); }
+      } catch {
+        setEsp32Online(false);
+        setEsp32Status('error');
+      }
     }, 1000);
   };
 
@@ -193,6 +204,7 @@ function DeteksiPenyakit({ isMobile = false }) {
     setLastHasil('');
     setEsp32IP('');
     setEsp32Frame(null);
+    setEsp32Status('idle');
   };
 
   // ── Kamera HP ─────────────────────────────────────
@@ -319,9 +331,25 @@ function DeteksiPenyakit({ isMobile = false }) {
                           transition: 'filter 0.3s'
                         }}
                       />
-                    : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center' }}>
-                        <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
-                        Menghubungkan ke kamera...
+                    : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', padding: '0 16px' }}>
+                        {esp32Status === 'connecting' && <>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>📡</div>
+                          <div>Menghubungkan ke ESP32-CAM...</div>
+                        </>}
+                        {esp32Status === 'no-frame' && <>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
+                          <div style={{ color: '#fbbf24' }}>ESP32 terdaftar tapi belum kirim frame.</div>
+                          <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Pastikan ESP32 menyala & terhubung WiFi.</div>
+                        </>}
+                        {esp32Status === 'error' && <>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div>
+                          <div style={{ color: '#f87171' }}>Gagal konek ke kamera.</div>
+                          <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Coba diskonek lalu konek ulang.</div>
+                        </>}
+                        {(esp32Status === 'live' || esp32Status === 'connecting') && esp32Status !== 'no-frame' && esp32Status !== 'error' && <>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
+                          <div>Menunggu frame pertama...</div>
+                        </>}
                       </div>
                   }
 
@@ -348,10 +376,14 @@ function DeteksiPenyakit({ isMobile = false }) {
                   <div style={styles.esp32Badge}>
                     <div style={{
                       width: 6, height: 6, borderRadius: '50%',
-                      background: esp32Online ? '#4ade80' : '#f87171'
+                      background: esp32Status === 'live' ? '#4ade80' : esp32Status === 'error' ? '#f87171' : '#fbbf24'
                     }} />
                     <span style={{ fontSize: 11, color: '#fff' }}>
-                      {esp32Processing ? 'Mendeteksi...' : esp32Online ? 'ESP32 Online' : 'Connecting...'}
+                      {esp32Processing ? 'Mendeteksi...'
+                        : esp32Status === 'live'       ? 'Live'
+                        : esp32Status === 'no-frame'   ? 'Menunggu frame...'
+                        : esp32Status === 'error'      ? 'Error'
+                        : 'Menghubungkan...'}
                     </span>
                     {esp32IP && (
                       <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>
