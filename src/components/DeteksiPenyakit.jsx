@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 const VPS = 'https://backendescam-production-cc88.up.railway.app';
+const WS_URL = VPS.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/frame';
 
 function CameraIcon({ size = 32, color = '#94a3b8' }) {
   return (
@@ -70,63 +71,36 @@ function DeteksiPenyakit({ isMobile = false }) {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const pollRef   = useRef(null);
+  const wsRef     = useRef(null);
+  const reconnectTimer = useRef(null);
 
-  const [mode, setMode]               = useState('idle');
-  const [preview, setPreview]         = useState(null);
-  const [loading, setLoading]         = useState(false);
-  const [hasil, setHasil]             = useState(null);
-  const [riwayat, setRiwayat]         = useState([]);
-  const [modalItem, setModalItem]     = useState(null);
-  const [esp32IP, setEsp32IP]         = useState('');
-  const [lastHasil, setLastHasil]     = useState('');
-  const [esp32Frame, setEsp32Frame]   = useState(null);
-  const [esp32Processing, setEsp32Processing] = useState(false);
-  const [esp32Status, setEsp32Status] = useState('idle');
-  const [frozenFrame, setFrozenFrame] = useState(null);
-  const frameRef    = useRef(null); // WebSocket ref
-  const lastHasilRef = useRef('');
+  const [mode, setMode]           = useState('idle');       // idle | camera | captured | esp32
+  const [preview, setPreview]     = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [hasil, setHasil]         = useState(null);
+  const [riwayat, setRiwayat]     = useState([]);
+  const [modalItem, setModalItem] = useState(null);
 
-  // sync lastHasil ke ref
-  useEffect(() => { lastHasilRef.current = lastHasil; }, [lastHasil]);
+  // ESP32 WS state
+  const [esp32Frame, setEsp32Frame]         = useState(null);   // blob URL frame live
+  const [esp32Status, setEsp32Status]       = useState('idle'); // idle|connecting|live|no-frame|error
+  const [esp32Detecting, setEsp32Detecting] = useState(false);  // YOLO sedang jalan
+  const [frozenFrame, setFrozenFrame]       = useState(null);   // frame yang di-freeze saat detect
+  const [esp32IP, setEsp32IP]               = useState('');
 
-  // ── Cek ESP32 via backend ─────────────────────────
-  const cekEsp32 = async () => {
-    try {
-      const res  = await fetch(`${VPS}/api/esp32/ip`, {
-        signal: AbortSignal.timeout(5000)
-      });
-      const data = await res.json();
-      setEsp32IP(data.ip || '');
-      return !!data.ip;
-    } catch {}
-    return false;
-  };
+  // ── Cleanup blob URL ──────────────────────────────────
+  const setFrame = useCallback((blob) => {
+    setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return blob; });
+  }, []);
 
-  // ── Stop semua koneksi ────────────────────────────
-  const stopPolling = () => {
-    if (pollRef.current)  { clearInterval(pollRef.current); pollRef.current = null; }
-    if (frameRef.current) {
-      frameRef.current.onmessage = null;
-      frameRef.current.onerror   = null;
-      frameRef.current.onclose   = null;
-      frameRef.current.close();
-      frameRef.current = null;
-    }
-  };
-
-  // ── WebSocket live frame dari backend ─────────────
-  const startFramePolling = useCallback(() => {
-    // Kalau sudah ada WS terbuka, jangan buat duplikat
-    if (frameRef.current && frameRef.current.readyState <= 1) return;
+  // ── Buka WebSocket ke backend ─────────────────────────
+  const connectWS = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState <= 1) return; // sudah open/connecting
 
     setEsp32Status('connecting');
-
-    // ws:// untuk http, wss:// untuk https
-    const wsUrl = VPS.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/frame';
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(WS_URL);
     ws.binaryType = 'blob';
-    frameRef.current = ws;
+    wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('[WS] Terhubung ke /ws/frame');
@@ -134,131 +108,139 @@ function DeteksiPenyakit({ isMobile = false }) {
     };
 
     ws.onmessage = (event) => {
-      // event.data adalah Blob (JPEG binary)
-      const url = URL.createObjectURL(event.data);
-      setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
-      setFrozenFrame(url);
-      setEsp32Status('live');
-      setEsp32Processing(false);
+      if (event.data instanceof Blob) {
+        // Binary = frame JPEG dari ESP32
+        const url = URL.createObjectURL(event.data);
+        setFrame(url);
+        setFrozenFrame(url);
+        setEsp32Status('live');
+        setEsp32Detecting(false);
+
+      } else if (typeof event.data === 'string') {
+        // JSON = hasil deteksi atau event dari backend
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'detect_result') {
+            setEsp32Detecting(false);
+            setHasil({ penyakit: data.penyakit, confidence: data.confidence });
+
+            const now = new Date(data.timestamp || Date.now());
+            setRiwayat(prev => [{
+              foto:       null,
+              penyakit:   data.penyakit,
+              confidence: data.confidence,
+              waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+              tanggal:    now.toLocaleDateString('id-ID',  { day: '2-digit', month: 'short', year: 'numeric' }),
+            }, ...prev.slice(0, 9)]);
+
+          } else if (data.type === 'detect_error') {
+            setEsp32Detecting(false);
+            console.error('[WS] Detect error:', data.message);
+          }
+        } catch (e) {
+          console.warn('[WS] Pesan tidak valid:', event.data);
+        }
+      }
     };
 
-    ws.onerror = () => {
-      setEsp32Status('error');
-      setEsp32Frame(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-    };
+    ws.onerror = () => setEsp32Status('error');
 
     ws.onclose = () => {
-      // Auto-reconnect setelah 3 detik kalau masih di mode esp32
+      wsRef.current = null;
       setEsp32Status(prev => {
-        if (prev === 'live' || prev === 'connecting' || prev === 'error') {
-          setTimeout(() => startFramePolling(), 3000);
-          return 'no-frame';
-        }
-        return prev;
+        if (prev === 'idle') return 'idle'; // sengaja ditutup
+        // Auto-reconnect setelah 3 detik
+        reconnectTimer.current = setTimeout(() => connectWS(), 3000);
+        return 'no-frame';
       });
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setFrame]);
 
+  // ── Tutup WebSocket ───────────────────────────────────
+  const disconnectWS = useCallback(() => {
+    if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // cegah auto-reconnect
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setFrame(null);
+    setFrozenFrame(null);
+    setEsp32Status('idle');
+    setEsp32Detecting(false);
+  }, [setFrame]);
 
+  // ── Cleanup saat unmount ──────────────────────────────
+  useEffect(() => () => disconnectWS(), [disconnectWS]);
 
-  const startPolling = useCallback(() => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    pollRef.current = setInterval(async () => {
-      try {
-        const res  = await fetch(`${VPS}/api/esp32/hasil`);
-        const data = await res.json();
-        if (data.penyakit && data.penyakit !== lastHasilRef.current) {
-          lastHasilRef.current = data.penyakit;
-          setLastHasil(data.penyakit);
-          setHasil(data);
-          const now = new Date(data.timestamp || Date.now());
-          setRiwayat(prev => [{
-            foto:       null,
-            penyakit:   data.penyakit,
-            confidence: data.confidence,
-            waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            tanggal:    now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-          }, ...prev.slice(0, 9)]);
-        }
-      } catch {}
-    }, 3000);
-  }, []);
-
-  // Load riwayat deteksi dari DB saat pertama kali
+  // ── Load riwayat dari DB ──────────────────────────────
   useEffect(() => {
     fetch(`${VPS}/api/history/deteksi`)
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data)) {
-          setRiwayat(data.map(d => ({
-            foto:       null,
-            penyakit:   d.penyakit,
-            confidence: d.confidence,
-            waktu:      new Date(d.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            tanggal:    new Date(d.timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-          })));
-        }
+        if (!Array.isArray(data)) return;
+        setRiwayat(data.map(d => ({
+          foto:       null,
+          penyakit:   d.penyakit,
+          confidence: d.confidence,
+          waktu:      new Date(d.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          tanggal:    new Date(d.timestamp).toLocaleDateString('id-ID',  { day: '2-digit', month: 'short', year: 'numeric' }),
+        })));
       })
       .catch(() => {});
   }, []);
 
-  // Auto-connect ESP32 saat komponen pertama kali mount
+  // ── Auto-connect saat mount ───────────────────────────
   useEffect(() => {
     const autoConnect = async () => {
       try {
         const res  = await fetch(`${VPS}/api/esp32/ip`, { signal: AbortSignal.timeout(5000) });
         const data = await res.json();
         if (data.ip) {
-          setEsp32IP(data.ip);
+          setEsp32IP(data.ip || '');
           setMode('esp32');
-          startPolling();
-          startFramePolling();
+          connectWS();
         }
-      } catch {
-        // ESP32 tidak ada — diam saja, user bisa klik manual
-      }
+      } catch { /* ESP32 tidak ada, diam saja */ }
     };
     autoConnect();
-  }, [startPolling, startFramePolling]);
+  }, [connectWS]);
 
-  useEffect(() => () => stopPolling(), []);
-
-  // ── Konek ESP32 ───────────────────────────────────
+  // ── Konek ESP32 manual ────────────────────────────────
   const handleKonekEsp32 = async () => {
-    const ok = await cekEsp32();
-    if (ok) {
-      setMode('esp32');
-      startPolling();
-      startFramePolling();
-    } else {
-      alert('ESP32-CAM tidak terdeteksi!\nPastikan ESP32 sudah nyala dan terhubung ke WiFi.');
+    try {
+      const res  = await fetch(`${VPS}/api/esp32/ip`, { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      if (data.ip) {
+        setEsp32IP(data.ip || '');
+        setMode('esp32');
+        connectWS();
+      } else {
+        alert('ESP32-CAM tidak terdeteksi.\nPastikan ESP32 sudah nyala dan terhubung ke WiFi.');
+      }
+    } catch {
+      alert('Gagal cek status ESP32. Coba lagi.');
     }
   };
 
   const handleDiskonekEsp32 = () => {
-    stopPolling();
+    disconnectWS();
     setMode('idle');
     setHasil(null);
-    setLastHasil('');
     setEsp32IP('');
-    setEsp32Frame(null);
-    setEsp32Status('idle');
   };
 
-  // ── Kamera HP ─────────────────────────────────────
+  // ── Kamera HP ─────────────────────────────────────────
   const bukaKamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
       videoRef.current.srcObject = stream;
       setMode('camera');
       setHasil(null);
       setPreview(null);
-    } catch {
-      alert('Tidak bisa akses kamera.');
-    }
+    } catch { alert('Tidak bisa akses kamera.'); }
   };
 
   const tutupKamera = (e) => {
@@ -279,24 +261,18 @@ function DeteksiPenyakit({ isMobile = false }) {
     streamRef.current?.getTracks().forEach(t => t.stop());
   }, []);
 
-  const ulangi = () => {
-    setPreview(null); setHasil(null); setMode('idle');
-    setTimeout(() => bukaKamera(), 100);
-  };
+  const ulangi = () => { setPreview(null); setHasil(null); setMode('idle'); setTimeout(bukaKamera, 100); };
 
-  const deteksi = async () => {
+  const deteksiHP = async () => {
     if (!preview) return;
     setLoading(true);
     try {
-      const res  = await fetch(preview);
-      const blob = await res.blob();
+      const res      = await fetch(preview);
+      const blob     = await res.blob();
       const formData = new FormData();
       formData.append('foto', blob, 'foto.jpg');
-      const response = await fetch(`${VPS}/api/deteksi`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await response.json();
+      const response = await fetch(`${VPS}/api/deteksi`, { method: 'POST', body: formData });
+      const data     = await response.json();
       setHasil(data);
       const now = new Date();
       setRiwayat(prev => [{
@@ -304,17 +280,17 @@ function DeteksiPenyakit({ isMobile = false }) {
         penyakit:   data.penyakit,
         confidence: data.confidence,
         waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        tanggal:    now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+        tanggal:    now.toLocaleDateString('id-ID',  { day: '2-digit', month: 'short', year: 'numeric' }),
       }, ...prev]);
-    } catch { alert('Gagal konek ke server!'); }
+    } catch { alert('Gagal konek ke server.'); }
     setLoading(false);
   };
 
+  // ── Render ─────────────────────────────────────────────
   const cameraBoxStyle = {
     ...styles.cameraBox,
-    cursor: mode === 'idle' ? 'pointer' : 'default',
-    borderColor: mode === 'camera' ? '#16a34a' : mode === 'esp32' ? '#3b82f6' : '#cbd5e1',
-    borderStyle: mode === 'esp32' ? 'solid' : 'dashed',
+    cursor:      mode === 'idle' ? 'pointer' : 'default',
+    borderColor: mode === 'camera' ? '#16a34a' : '#cbd5e1',
     ...(mode === 'camera' && isMobile ? {
       position: 'fixed', top: 0, left: 0,
       width: '100vw', height: '100vh',
@@ -340,117 +316,72 @@ function DeteksiPenyakit({ isMobile = false }) {
             onClick={() => mode === 'esp32' ? handleDiskonekEsp32() : handleKonekEsp32()}
             style={{ ...styles.modeBtn, ...(mode === 'esp32' ? styles.modeBtnActiveBlue : {}) }}
           >
-            📷 ESP32-CAM {mode === 'esp32' ? (esp32Status === 'live' ? '🟢' : '🟡') : ''}
+            📷 ESP32-CAM {mode === 'esp32'
+              ? esp32Status === 'live' ? '🟢' : esp32Status === 'error' ? '🔴' : '🟡'
+              : ''}
           </button>
         </div>
 
-        <div style={styles.grid2} className="grid-2">
+        <div style={styles.grid2}>
 
-          {/* Kiri */}
+          {/* ── Kiri ── */}
           <div>
 
             {/* Mode ESP32 */}
             {mode === 'esp32' && (
               <div>
-                <div style={{
-                  ...styles.cameraBox,
-                  borderColor: '#3b82f6',
-                  borderStyle: 'solid',
-                  cursor: 'default',
-                  background: '#000',
-                }}>
-                  {/* Tampilkan frozen frame saat proses, live frame saat normal */}
-                  {(esp32Processing ? frozenFrame : esp32Frame)
+                <div style={{ ...styles.cameraBox, borderColor: '#3b82f6', borderStyle: 'solid', cursor: 'default', background: '#000' }}>
+
+                  {/* Gambar: frozen saat detect, live saat normal */}
+                  {(esp32Detecting ? frozenFrame : esp32Frame)
                     ? <img
-                        src={esp32Processing ? frozenFrame : esp32Frame}
+                        src={esp32Detecting ? frozenFrame : esp32Frame}
                         alt="ESP32 Live"
                         style={{ width: '100%', height: '100%', objectFit: 'cover',
-                          filter: esp32Processing ? 'brightness(0.6)' : 'none',
+                          filter: esp32Detecting ? 'brightness(0.55)' : 'none',
                           transition: 'filter 0.3s'
                         }}
                       />
                     : <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', padding: '0 16px' }}>
-                        {esp32Status === 'connecting' && <>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>📡</div>
-                          <div>Menghubungkan ke ESP32-CAM...</div>
+                        {esp32Status === 'connecting' && <><div style={{ fontSize: 28, marginBottom: 8 }}>📡</div><div>Menghubungkan ke ESP32-CAM...</div></>}
+                        {esp32Status === 'no-frame'   && <><div style={{ fontSize: 28, marginBottom: 8 }}>📷</div><div style={{ color: '#fbbf24' }}>Menunggu frame dari ESP32...</div>
+                          <button onClick={() => { if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; } connectWS(); }}
+                            style={{ marginTop: 10, padding: '6px 14px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+                            🔄 Coba Lagi
+                          </button>
                         </>}
-                        {esp32Status === 'no-frame' && <>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
-                          <div style={{ color: '#fbbf24' }}>ESP32 belum kirim frame.</div>
-                          <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Pastikan ESP32 menyala & terhubung WiFi.</div>
-                          <button onClick={() => {
-                            if (frameRef.current) {
-                              frameRef.current.close();
-                              frameRef.current = null;
-                            }
-                            startFramePolling();
-                          }} style={{
-                            marginTop: 10, padding: '6px 14px', background: '#3b82f6',
-                            color: '#fff', border: 'none', borderRadius: 8,
-                            fontSize: 12, cursor: 'pointer'
-                          }}>🔄 Coba Lagi</button>
-                        </>}
-                        {esp32Status === 'error' && <>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div>
-                          <div style={{ color: '#f87171' }}>Gagal konek ke kamera.</div>
-                          <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Coba diskonek lalu konek ulang.</div>
-                        </>}
-                        {(esp32Status === 'live' || esp32Status === 'connecting') && esp32Status !== 'no-frame' && esp32Status !== 'error' && <>
-                          <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
-                          <div>Menunggu frame pertama...</div>
-                        </>}
+                        {esp32Status === 'error' && <><div style={{ fontSize: 28, marginBottom: 8 }}>⚠️</div><div style={{ color: '#f87171' }}>Gagal konek ke kamera.</div></>}
+                        {(esp32Status === 'live' || esp32Status === 'connecting') && esp32Status !== 'no-frame' && esp32Status !== 'error' &&
+                          <><div style={{ fontSize: 28, marginBottom: 8 }}>📷</div><div>Menunggu frame pertama...</div></>
+                        }
                       </div>
                   }
 
-                  {/* Overlay loading saat deteksi */}
-                  {esp32Processing && (
-                    <div style={{
-                      position: 'absolute', inset: 0,
-                      display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center', gap: 8
-                    }}>
-                      <div style={{
-                        width: 36, height: 36, border: '3px solid rgba(255,255,255,0.3)',
-                        borderTopColor: '#fff', borderRadius: '50%',
-                        animation: 'spin 0.8s linear infinite'
-                      }} />
-                      <span style={{ color: '#fff', fontSize: 12, fontWeight: 500,
-                        background: 'rgba(0,0,0,0.5)', padding: '3px 10px', borderRadius: 999 }}>
-                        Mendeteksi...
+                  {/* Overlay loading deteksi */}
+                  {esp32Detecting && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                      <span style={{ color: '#fff', fontSize: 12, fontWeight: 500, background: 'rgba(0,0,0,0.55)', padding: '3px 10px', borderRadius: 999 }}>
+                        Mendeteksi penyakit...
                       </span>
                     </div>
                   )}
 
                   {/* Badge status */}
                   <div style={styles.esp32Badge}>
-                    <div style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: esp32Status === 'live' ? '#4ade80' : esp32Status === 'error' ? '#f87171' : '#fbbf24'
-                    }} />
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: esp32Status === 'live' ? '#4ade80' : esp32Status === 'error' ? '#f87171' : '#fbbf24' }} />
                     <span style={{ fontSize: 11, color: '#fff' }}>
-                      {esp32Processing ? 'Mendeteksi...'
-                        : esp32Status === 'live'       ? 'Live'
-                        : esp32Status === 'no-frame'   ? 'Menunggu frame...'
-                        : esp32Status === 'error'      ? 'Error'
-                        : 'Menghubungkan...'}
+                      {esp32Detecting ? 'Mendeteksi...' : esp32Status === 'live' ? 'Live' : esp32Status === 'no-frame' ? 'Menunggu...' : esp32Status === 'error' ? 'Error' : 'Menghubungkan...'}
                     </span>
-                    {esp32IP && (
-                      <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>
-                        {esp32IP}
-                      </span>
-                    )}
+                    {esp32IP && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>{esp32IP}</span>}
                   </div>
                 </div>
 
-                <button
-                  onClick={handleDiskonekEsp32}
-                  style={{ ...styles.btnGray, marginTop: 10, width: '100%', borderColor: '#fca5a5', color: '#dc2626' }}
-                >
+                <button onClick={handleDiskonekEsp32} style={{ ...styles.btnGray, marginTop: 10, width: '100%', borderColor: '#fca5a5', color: '#dc2626' }}>
                   Diskonek ESP32
                 </button>
-
                 <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, textAlign: 'center' }}>
-                  Tekan tombol fisik ESP32 untuk foto & deteksi
+                  Tekan tombol fisik ESP32 untuk foto & deteksi otomatis
                 </div>
               </div>
             )}
@@ -459,44 +390,25 @@ function DeteksiPenyakit({ isMobile = false }) {
             {mode !== 'esp32' && (
               <div>
                 <div style={cameraBoxStyle} onClick={mode === 'idle' ? bukaKamera : undefined}>
-                  <video ref={videoRef} autoPlay playsInline
-                    style={{ ...styles.media, display: mode === 'camera' ? 'block' : 'none' }} />
+                  <video ref={videoRef} autoPlay playsInline style={{ ...styles.media, display: mode === 'camera' ? 'block' : 'none' }} />
                   {preview && <img src={preview} alt="preview" style={styles.media} />}
-                  {mode === 'idle' && (
-                    <div style={{ textAlign: 'center' }}>
-                      <CameraIcon size={36} color="#94a3b8" />
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Ketuk untuk mulai</div>
-                    </div>
-                  )}
+                  {mode === 'idle' && <div style={{ textAlign: 'center' }}><CameraIcon size={36} color="#94a3b8" /><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Ketuk untuk mulai</div></div>}
                   {mode === 'camera' && (
                     <>
-                      <div style={{ ...styles.hintOverlay, top: isMobile ? 50 : 10 }}>
-                        Ketuk tombol kamera untuk foto
-                      </div>
+                      <div style={{ ...styles.hintOverlay, top: isMobile ? 50 : 10 }}>Ketuk tombol kamera untuk foto</div>
                       <div style={{ ...styles.camControls, bottom: isMobile ? 60 : 14 }}>
-                        <button onClick={ambilFoto} style={styles.captureBtn}>
-                          <CameraIcon size={22} color="#fff" />
-                        </button>
+                        <button onClick={ambilFoto} style={styles.captureBtn}><CameraIcon size={22} color="#fff" /></button>
                         <button onClick={tutupKamera} style={styles.endCallBtn}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                       </div>
                     </>
                   )}
                 </div>
-
-                {mode === 'idle' && (
-                  <div style={styles.hintText}>Ketuk untuk buka kamera HP</div>
-                )}
-
+                {mode === 'idle' && <div style={styles.hintText}>Ketuk untuk buka kamera HP</div>}
                 {mode === 'captured' && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button onClick={deteksi} disabled={loading} style={styles.btnGreen}>
-                      {loading ? 'Mendeteksi...' : 'Deteksi'}
-                    </button>
+                    <button onClick={deteksiHP} disabled={loading} style={styles.btnGreen}>{loading ? 'Mendeteksi...' : 'Deteksi'}</button>
                     <button onClick={ulangi} style={styles.btnGray}>Ulangi</button>
                   </div>
                 )}
@@ -513,21 +425,16 @@ function DeteksiPenyakit({ isMobile = false }) {
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
 
-          {/* Kanan: riwayat */}
+          {/* ── Kanan: riwayat ── */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <span style={styles.galeriTitle}>Riwayat Deteksi</span>
               <span style={{ fontSize: 11, color: '#94a3b8' }}>{riwayat.length} hasil</span>
             </div>
             <div style={styles.listWrap}>
-              {riwayat.length === 0 ? (
-                <div style={styles.emptyList}>
-                  <CameraIcon size={24} color="#cbd5e1" />
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Belum ada hasil</div>
-                </div>
-              ) : riwayat.map((r, i) => {
-                const status = getStatus(r.penyakit);
-                return (
+              {riwayat.length === 0
+                ? <div style={styles.emptyList}><CameraIcon size={24} color="#cbd5e1" /><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Belum ada hasil</div></div>
+                : riwayat.map((r, i) => (
                   <div key={i} onClick={() => setModalItem(r)} style={styles.listRow}>
                     <div style={styles.listThumb}>
                       {r.foto
@@ -537,17 +444,15 @@ function DeteksiPenyakit({ isMobile = false }) {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ ...styles.pill, ...pillStyle[status] }}>{r.penyakit}</span>
+                        <span style={{ ...styles.pill, ...pillStyle[getStatus(r.penyakit)] }}>{r.penyakit}</span>
                         <span style={{ fontSize: 11, color: '#94a3b8' }}>{r.confidence}%</span>
                       </div>
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.waktu} · {r.tanggal}</div>
                     </div>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </div>
-                );
-              })}
+                ))
+              }
             </div>
           </div>
 
