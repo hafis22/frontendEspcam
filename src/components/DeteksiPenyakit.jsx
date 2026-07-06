@@ -82,6 +82,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32IP, setEsp32IP]         = useState('');
   const [lastHasil, setLastHasil]     = useState('');
   const [esp32Frame, setEsp32Frame]   = useState(null);
+  const [esp32Processing, setEsp32Processing] = useState(false); // freeze saat deteksi
   const [esp32Status, setEsp32Status] = useState('idle'); // idle | connecting | live | no-frame | error
   const [frozenFrame, setFrozenFrame] = useState(null); // frame yang di-freeze
   const frameRef = useRef(null);
