@@ -74,6 +74,7 @@ function DeteksiPenyakit({ isMobile = false }) {
   const wsRef          = useRef(null);
   const reconnectTimer = useRef(null);
   const offlineTimer   = useRef(null);  // debounce esp32_offline
+  const detectingRef   = useRef(false); // mirror esp32Detecting untuk akses di WS closure
 
   const [mode, setMode]           = useState('idle');       // idle | camera | captured | esp32
   const [preview, setPreview]     = useState(null);
@@ -88,6 +89,9 @@ function DeteksiPenyakit({ isMobile = false }) {
   const [esp32Detecting, setEsp32Detecting] = useState(false);  // YOLO sedang jalan
   const [capturedFoto, setCapturedFoto]     = useState(null);   // base64 foto yang diambil ESP32
   const [esp32IP, setEsp32IP]               = useState('');
+
+  // Sync detectingRef dengan state
+  useEffect(() => { detectingRef.current = esp32Detecting; }, [esp32Detecting]);
 
   // ── Cleanup blob URL ──────────────────────────────────
   const setFrame = useCallback((blob) => {
@@ -118,6 +122,8 @@ function DeteksiPenyakit({ isMobile = false }) {
         const url = URL.createObjectURL(event.data);
         setFrame(url);
         setEsp32Status('live');
+        // Kalau tidak sedang deteksi, clear capturedFoto supaya live tampil
+        if (!detectingRef.current) setCapturedFoto(null);
 
       } else if (typeof event.data === 'string') {
         // JSON = event dari backend
