@@ -133,12 +133,13 @@ function DeteksiPenyakit({ isMobile = false }) {
           } else if (data.type === 'detect_result') {
             // YOLO selesai — tampil hasil, masuk riwayat, resume live
             setEsp32Detecting(false);
-            setCapturedFoto(null);  // hapus captured foto, live resume
+            setCapturedFoto(null);
             setHasil({ penyakit: data.penyakit, confidence: data.confidence });
 
+            const fotoUrl = data.foto_url ? VPS + data.foto_url : null;
             const now = new Date(data.timestamp || Date.now());
             setRiwayat(prev => [{
-              foto:       data.foto || null,  // base64 foto dari backend
+              foto:       fotoUrl,
               penyakit:   data.penyakit,
               confidence: data.confidence,
               waktu:      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),

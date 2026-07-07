@@ -25,7 +25,6 @@ export default function History({ isMobile = false }) {
   const [loading, setLoading]     = useState(false);
 
 const API_URL = 'https://backendescam-production-cc88.up.railway.app';
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -272,7 +271,13 @@ const API_URL = 'https://backendescam-production-cc88.up.railway.app';
                             <span style={{ fontWeight: 500, color: '#1e293b', fontSize: 12 }}>{formatDate(d.timestamp)}</span>
                             <span style={{ fontSize: 11, color: '#94a3b8' }}>{formatTime(d.timestamp)}</span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                          {d.foto_url && (
+                            <img src={API_URL + d.foto_url} alt="deteksi"
+                              style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 8, display: 'block' }}
+                              onError={e => { e.target.style.display = 'none'; }}
+                            />
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
                             <span style={{ ...styles.pill, ...pillStyle[status] }}>{d.penyakit}</span>
                             <span style={{ fontWeight: 500, color: '#1e293b', fontSize: 13 }}>{d.confidence}%</span>
                           </div>
@@ -286,6 +291,7 @@ const API_URL = 'https://backendescam-production-cc88.up.railway.app';
                     <table style={styles.table}>
                       <thead>
                         <tr style={styles.theadRow}>
+                          <th style={styles.th}>Foto</th>
                           <th style={styles.th}>Waktu</th>
                           <th style={styles.th}>Hasil Deteksi</th>
                           <th style={styles.th}>Confidence</th>
@@ -293,11 +299,22 @@ const API_URL = 'https://backendescam-production-cc88.up.railway.app';
                       </thead>
                       <tbody>
                         {deteksiData.length === 0 ? (
-                          <tr><td colSpan={3} style={styles.empty}>Tidak ada data</td></tr>
+                          <tr><td colSpan={4} style={styles.empty}>Tidak ada data</td></tr>
                         ) : deteksiData.map((d, i) => {
                           const status = getStatus(d.penyakit);
                           return (
                             <tr key={i} style={{ background: i % 2 === 0 ? '#f8fafc' : '#fff' }}>
+                              <td style={styles.td}>
+                                {d.foto_url
+                                  ? <img src={API_URL + d.foto_url} alt="deteksi"
+                                      style={{ width: 56, height: 42, objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                                      onError={e => { e.target.style.display = 'none'; }}
+                                    />
+                                  : <div style={{ width: 56, height: 42, background: '#f1f5f9', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                    </div>
+                                }
+                              </td>
                               <td style={styles.td}>
                                 <div style={{ fontWeight: 500, color: '#1e293b' }}>{formatDate(d.timestamp)}</div>
                                 <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatTime(d.timestamp)}</div>
