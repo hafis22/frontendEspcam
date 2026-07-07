@@ -41,7 +41,12 @@ const API_URL = 'https://backendescam-production-cc88.up.railway.app';
     setLoading(false);
   }, [dari, sampai]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { 
+    fetchData(); 
+    // Auto-refresh tiap 30 detik supaya data terbaru masuk tanpa reload
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -64,6 +69,13 @@ const API_URL = 'https://backendescam-production-cc88.up.railway.app';
             <input type="date" value={dari}   onChange={e => setDari(e.target.value)}   style={styles.dateInput} />
             <span style={{ fontSize: 12, color: '#64748b' }}>—</span>
             <input type="date" value={sampai} onChange={e => setSampai(e.target.value)} style={styles.dateInput} />
+            <button onClick={fetchData} disabled={loading} style={styles.refreshBtn} title="Refresh">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -321,6 +333,7 @@ const styles = {
   tabActive:       { background: '#fff', color: '#1e293b', fontWeight: 500, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
   filterRow:       { display: 'flex', alignItems: 'center', gap: 6 },
   dateInput:       { border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#334155', background: '#f8fafc' },
+  refreshBtn:      { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', color: '#64748b' },
   sensorGrid:      { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
   tableTitle:      { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 },
   dot:             { width: 8, height: 8, borderRadius: '50%' },

@@ -70,9 +70,10 @@ function ModalFoto({ item, onClose }) {
 function DeteksiPenyakit({ isMobile = false }) {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-  const wsRef     = useRef(null);
+  const streamRef      = useRef(null);
+  const wsRef          = useRef(null);
   const reconnectTimer = useRef(null);
+  const offlineTimer   = useRef(null);  // debounce esp32_offline
 
   const [mode, setMode]           = useState('idle');       // idle | camera | captured | esp32
   const [preview, setPreview]     = useState(null);
@@ -109,8 +110,11 @@ function DeteksiPenyakit({ isMobile = false }) {
 
     ws.onmessage = (event) => {
       if (event.data instanceof Blob) {
-        // Binary = frame JPEG live dari ESP32
-        // Hanya tampilkan kalau tidak sedang mendeteksi
+        // Frame masuk — cancel pending offline timer kalau ada
+        if (offlineTimer.current) {
+          clearTimeout(offlineTimer.current);
+          offlineTimer.current = null;
+        }
         const url = URL.createObjectURL(event.data);
         setFrame(url);
         setEsp32Status('live');
@@ -147,12 +151,18 @@ function DeteksiPenyakit({ isMobile = false }) {
             console.error('[WS] Detect error:', data.message);
 
           } else if (data.type === 'esp32_offline') {
-            // ESP32 cabut daya / disconnect — clear frame, tampil placeholder
-            setFrame(null);
-            setEsp32Detecting(false);
-            setCapturedFoto(null);
-            setEsp32Status('no-frame');
-            console.log('[WS] ESP32 offline');
+            // Debounce 4 detik — kalau ESP32 langsung reconnect dan kirim frame,
+            // timer di-cancel dan tampilan tidak berubah
+            if (offlineTimer.current) clearTimeout(offlineTimer.current);
+            offlineTimer.current = setTimeout(() => {
+              offlineTimer.current = null;
+              setFrame(null);
+              setEsp32Detecting(false);
+              setCapturedFoto(null);
+              setEsp32Status('no-frame');
+              console.log('[WS] ESP32 offline confirmed');
+            }, 4000);
+            console.log('[WS] ESP32 offline signal, tunggu 4s...');
           }
         } catch (e) {
           console.warn('[WS] Pesan tidak valid:', event.data);
@@ -165,10 +175,11 @@ function DeteksiPenyakit({ isMobile = false }) {
     ws.onclose = () => {
       wsRef.current = null;
       setEsp32Status(prev => {
-        if (prev === 'idle') return 'idle'; // sengaja ditutup
+        if (prev === 'idle') return 'idle';
         // Auto-reconnect setelah 3 detik
+        // Tidak ubah status ke no-frame dulu — biarkan frame terakhir tetap tampil
         reconnectTimer.current = setTimeout(() => connectWS(), 3000);
-        return 'no-frame';
+        return prev; // pertahankan status sebelumnya selama reconnect
       });
     };
   }, [setFrame]);
@@ -176,8 +187,9 @@ function DeteksiPenyakit({ isMobile = false }) {
   // ── Tutup WebSocket ───────────────────────────────────
   const disconnectWS = useCallback(() => {
     if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+    if (offlineTimer.current)   { clearTimeout(offlineTimer.current);   offlineTimer.current   = null; }
     if (wsRef.current) {
-      wsRef.current.onclose = null; // cegah auto-reconnect
+      wsRef.current.onclose = null;
       wsRef.current.close();
       wsRef.current = null;
     }
