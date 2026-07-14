@@ -1,21 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import SensorLingkungan from './components/SensorLingkungan';
-import SensorTanaman from './components/SensorTanaman';
 import DeteksiPenyakit from './components/DeteksiPenyakit';
 import History from './components/History';
 
 export const API = 'https://backendescam-production-cc88.up.railway.app';
-
-function DashboardIcon({ active }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-      stroke={active ? '#fff' : '#86efac'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-      <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-    </svg>
-  );
-}
 
 function CameraIcon({ active }) {
   return (
@@ -48,18 +35,13 @@ function LogoIcon() {
 }
 
 const tabs = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'kamera',    label: 'Deteksi' },
-  { key: 'history',   label: 'History' },
+  { key: 'kamera',  label: 'Deteksi' },
+  { key: 'history', label: 'History' },
 ];
 
 export default function App() {
-  const [page, setPage]         = useState('dashboard');
+  const [page, setPage]         = useState('kamera');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sensor, setSensor]     = useState({
-    lingkungan: { temperature: 0, humidity: 0, lux: 0 },
-    tanaman:    { temperature: 0, humidity: 0, ph: 0, ec: 0, nitrogen: 0, fosfor: 0, kalium: 0 },
-  });
 
   const today = new Date().toLocaleDateString('id-ID', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
@@ -72,24 +54,9 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(`${API}/api/sensor`);
-        setSensor(res.data);
-      } catch {
-        console.log('Gagal ambil data sensor');
-      }
-    };
-    fetchData();
-    const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
   const TabIcon = ({ tabKey, active }) => {
-    if (tabKey === 'dashboard') return <DashboardIcon active={active} />;
-    if (tabKey === 'kamera')    return <CameraIcon    active={active} />;
-    if (tabKey === 'history')   return <HistoryIcon   active={active} />;
+    if (tabKey === 'kamera')  return <CameraIcon  active={active} />;
+    if (tabKey === 'history') return <HistoryIcon active={active} />;
     return null;
   };
 
@@ -98,8 +65,6 @@ export default function App() {
 
       {/* Header */}
       <div style={styles.header}>
-
-        {/* Kiri: logo + judul */}
         <div style={styles.headerLeft}>
           <div style={styles.logoWrap}><LogoIcon /></div>
           <div>
@@ -110,7 +75,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tengah: tab — desktop only */}
+        {/* Tab — desktop */}
         {!isMobile && (
           <div style={styles.tabWrap}>
             {tabs.map(t => (
@@ -123,12 +88,9 @@ export default function App() {
           </div>
         )}
 
-        {/* Kanan */}
         <div style={styles.headerRight}>
           {!isMobile && <span style={styles.headerDate}>{today}</span>}
           <span style={styles.badgeLive}>● Live</span>
-
-          {/* Hamburger — mobile only */}
           {isMobile && (
             <button style={styles.hamburger} onClick={() => setMenuOpen(!menuOpen)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
@@ -143,7 +105,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Mobile dropdown menu */}
+      {/* Mobile dropdown */}
       {isMobile && menuOpen && (
         <div style={styles.mobileMenu}>
           {tabs.map(t => (
@@ -160,12 +122,6 @@ export default function App() {
 
       {/* Konten */}
       <div style={styles.content}>
-        {page === 'dashboard' && (
-          <>
-            <SensorLingkungan data={sensor.lingkungan} isMobile={isMobile} />
-            <SensorTanaman    data={sensor.tanaman}    isMobile={isMobile} />
-          </>
-        )}
         {page === 'kamera'  && <DeteksiPenyakit isMobile={isMobile} />}
         {page === 'history' && <History         isMobile={isMobile} />}
       </div>
