@@ -61,13 +61,13 @@ export default function App() {
           <img
             src="/logo-kampus.png"
             alt="Logo Kampus"
-            style={{ height: 52, width: 52, objectFit: 'contain', borderRadius: 4 }}
+            style={{ height: 121, width: 121, objectFit: 'contain', borderRadius: 4 }}
             onError={e => { e.target.style.display = 'none'; }}
           />
           <img
             src="/download-removebg-preview.png"
             alt="Logo Permata Indonesia"
-            style={{ height: 48, objectFit: 'contain', maxWidth: 120 }}
+            style={{ height: 121, width: 121, objectFit: 'contain' }}
             onError={e => { e.target.style.display = 'none'; }}
           />
           <div>
@@ -135,7 +135,7 @@ export default function App() {
 
 const styles = {
   page:            { minHeight: '100vh', background: '#e5ecd9', fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' },
-  header:          { background: '#227242', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '0 0 16px 16px', position: 'sticky', top: 0, zIndex: 100 },
+  header:          { background: '#227242', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '0 0 16px 16px', position: 'sticky', top: 0, zIndex: 100 },
   headerLeft:      { display: 'flex', alignItems: 'center', gap: 8 },
   headerSub:       { fontSize: 11, color: '#86efac', marginBottom: 2 },
   headerTitle:     { fontSize: 16, fontWeight: 700, color: '#f0fdf4' },
