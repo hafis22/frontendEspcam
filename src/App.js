@@ -24,15 +24,6 @@ function HistoryIcon({ active }) {
   );
 }
 
-function LogoIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-      stroke="#86efac" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a9 9 0 0 1 9 9c0 3.5-2 6.5-5 8l-4 3-4-3c-3-1.5-5-4.5-5-8a9 9 0 0 1 9-9z"/>
-      <path d="M12 6v6l3 2"/>
-    </svg>
-  );
-}
 
 const tabs = [
   { key: 'kamera',  label: 'Deteksi' },
@@ -65,8 +56,20 @@ export default function App() {
 
       {/* Header */}
       <div style={styles.header}>
+        {/* Kiri: logo kampus + logo permata + judul */}
         <div style={styles.headerLeft}>
-          <div style={styles.logoWrap}><LogoIcon /></div>
+          <img
+            src="/logo-kampus.png"
+            alt="Logo Kampus"
+            style={{ height: 36, width: 36, objectFit: 'contain', borderRadius: 4 }}
+            onError={e => { e.target.style.display = 'none'; }}
+          />
+          <img
+            src="/download-removebg-preview.png"
+            alt="Logo Permata Indonesia"
+            style={{ height: 32, objectFit: 'contain', maxWidth: 80 }}
+            onError={e => { e.target.style.display = 'none'; }}
+          />
           <div>
             <div style={styles.headerSub}>Monitoring Sistem</div>
             <div style={styles.headerTitle}>
@@ -133,8 +136,7 @@ export default function App() {
 const styles = {
   page:            { minHeight: '100vh', background: '#e5ecd9', fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' },
   header:          { background: '#227242', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '0 0 16px 16px', position: 'sticky', top: 0, zIndex: 100 },
-  headerLeft:      { display: 'flex', alignItems: 'center', gap: 10 },
-  logoWrap:        { width: 36, height: 36, background: '#166534', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  headerLeft:      { display: 'flex', alignItems: 'center', gap: 8 },
   headerSub:       { fontSize: 10, color: '#86efac', marginBottom: 1 },
   headerTitle:     { fontSize: 14, fontWeight: 600, color: '#f0fdf4' },
   tabWrap:         { display: 'flex', background: '#0f3d1a', borderRadius: 10, padding: 3, gap: 2 },
