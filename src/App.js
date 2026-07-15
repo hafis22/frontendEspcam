@@ -61,13 +61,13 @@ export default function App() {
           <img
             src="/logo-kampus.png"
             alt="Logo Kampus"
-            style={{ height: 36, width: 36, objectFit: 'contain', borderRadius: 4 }}
+            style={{ height: 52, width: 52, objectFit: 'contain', borderRadius: 4 }}
             onError={e => { e.target.style.display = 'none'; }}
           />
           <img
             src="/download-removebg-preview.png"
             alt="Logo Permata Indonesia"
-            style={{ height: 32, objectFit: 'contain', maxWidth: 80 }}
+            style={{ height: 48, objectFit: 'contain', maxWidth: 120 }}
             onError={e => { e.target.style.display = 'none'; }}
           />
           <div>
@@ -135,10 +135,10 @@ export default function App() {
 
 const styles = {
   page:            { minHeight: '100vh', background: '#e5ecd9', fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' },
-  header:          { background: '#227242', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '0 0 16px 16px', position: 'sticky', top: 0, zIndex: 100 },
+  header:          { background: '#227242', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '0 0 16px 16px', position: 'sticky', top: 0, zIndex: 100 },
   headerLeft:      { display: 'flex', alignItems: 'center', gap: 8 },
-  headerSub:       { fontSize: 10, color: '#86efac', marginBottom: 1 },
-  headerTitle:     { fontSize: 14, fontWeight: 600, color: '#f0fdf4' },
+  headerSub:       { fontSize: 11, color: '#86efac', marginBottom: 2 },
+  headerTitle:     { fontSize: 16, fontWeight: 700, color: '#f0fdf4' },
   tabWrap:         { display: 'flex', background: '#0f3d1a', borderRadius: 10, padding: 3, gap: 2 },
   tabBtn:          { display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: 'none', borderRadius: 8, fontSize: 12, cursor: 'pointer', background: 'transparent', color: '#86efac', fontWeight: 400 },
   tabActive:       { background: '#166534', color: '#fff', fontWeight: 500 },
