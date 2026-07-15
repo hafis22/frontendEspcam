@@ -67,7 +67,7 @@ export default function App() {
           <img
             src="/download-removebg-preview.png"
             alt="Logo Permata Indonesia"
-            style={{ height: 121, width: 121, objectFit: 'contain' }}
+            style={{ height: 121, width: 242, objectFit: 'contain' }}
             onError={e => { e.target.style.display = 'none'; }}
           />
           <div>
