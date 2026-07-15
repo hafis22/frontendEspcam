@@ -213,14 +213,16 @@ function DeteksiPenyakit({ isMobile = false }) {
     fetch(`${VPS}/api/history/deteksi`)
       .then(r => r.json())
       .then(data => {
-        if (!Array.isArray(data)) return;
-        setRiwayat(data.map(d => ({
-          foto:       null,
+        if (!Array.isArray(data) || data.length === 0) return;
+        // Ambil hanya 1 terbaru — panel kanan hanya tampil hasil terakhir
+        const d = data[0];
+        setRiwayat([{
+          foto:       d.foto_url ? VPS + d.foto_url : null,
           penyakit:   d.penyakit,
           confidence: d.confidence,
           waktu:      new Date(d.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           tanggal:    new Date(d.timestamp).toLocaleDateString('id-ID',  { day: '2-digit', month: 'short', year: 'numeric' }),
-        })));
+        }]);
       })
       .catch(() => {});
   }, []);
@@ -464,34 +466,40 @@ function DeteksiPenyakit({ isMobile = false }) {
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
 
-          {/* ── Kanan: riwayat ── */}
+          {/* ── Kanan: hasil terbaru ── */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={styles.galeriTitle}>Riwayat Deteksi</span>
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>{riwayat.length} hasil</span>
-            </div>
-            <div style={styles.listWrap}>
-              {riwayat.length === 0
-                ? <div style={styles.emptyList}><CameraIcon size={24} color="#cbd5e1" /><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Belum ada hasil</div></div>
-                : riwayat.map((r, i) => (
-                  <div key={i} onClick={() => setModalItem(r)} style={styles.listRow}>
-                    <div style={styles.listThumb}>
-                      {r.foto
-                        ? <img src={r.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
-                        : <CameraIcon size={16} color="#cbd5e1" />
-                      }
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ ...styles.pill, ...pillStyle[getStatus(r.penyakit)] }}>{r.penyakit}</span>
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>{r.confidence}%</span>
+            <span style={styles.galeriTitle}>Hasil Terbaru</span>
+            <div style={{ marginTop: 10 }}>
+              {riwayat.length === 0 ? (
+                <div style={styles.emptyList}>
+                  <CameraIcon size={24} color="#cbd5e1" />
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Belum ada hasil</div>
+                </div>
+              ) : (() => {
+                const r = riwayat[0]; // hanya tampil yang terbaru
+                const status = getStatus(r.penyakit);
+                return (
+                  <div onClick={() => setModalItem(r)} style={{ ...styles.listRow, flexDirection: 'column', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    {r.foto && (
+                      <img src={r.foto} alt="hasil"
+                        style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 10 }}
+                      />
+                    )}
+                    {!r.foto && (
+                      <div style={{ width: '100%', aspectRatio: '4/3', background: '#f1f5f9', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CameraIcon size={32} color="#cbd5e1" />
+                      </div>
+                    )}
+                    <div style={{ width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ ...styles.pill, ...pillStyle[status], fontSize: 12, padding: '3px 12px' }}>{r.penyakit}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{r.confidence}%</span>
                       </div>
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.waktu} · {r.tanggal}</div>
                     </div>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </div>
-                ))
-              }
+                );
+              })()}
             </div>
           </div>
 
